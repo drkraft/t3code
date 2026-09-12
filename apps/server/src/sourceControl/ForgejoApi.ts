@@ -34,11 +34,22 @@ const Viewer = Schema.Struct({ id: Schema.Int, login: Schema.NonEmptyString });
 export class ForgejoApi extends Context.Service<
   ForgejoApi,
   {
+    readonly requestText: (input: {
+      readonly host: string;
+      readonly path: string;
+    }) => Effect.Effect<
+      {
+        readonly text: string;
+        readonly truncated: boolean;
+        readonly invalidUtf8: boolean;
+      },
+      ForgejoApiError
+    >;
     readonly request: <S extends Schema.Top>(
       input: RequestInput<S>,
     ) => Effect.Effect<S["Type"], ForgejoApiError, S["DecodingServices"]>;
     readonly page: <S extends Schema.Top>(
-      input: RequestInput<S>,
+      input: RequestInput<S> & { readonly allowNullItems?: boolean },
     ) => Effect.Effect<
       { readonly items: ReadonlyArray<S["Type"]>; readonly next: string | null },
       ForgejoApiError,
@@ -73,7 +84,7 @@ export const make = Effect.gen(function* () {
     new ForgejoApiError({ reason, detail });
 
   const send = Effect.fn("ForgejoApi.send")(
-    function* (input: Omit<RequestInput<Schema.Top>, "schema">) {
+    function* (input: Omit<RequestInput<Schema.Top>, "schema">, raw = false) {
       const connection = connections.resolve(input.host);
       if (!connection)
         return yield* fail("configuration", "No Forgejo connection matches this host.");
@@ -83,7 +94,7 @@ export const make = Effect.gen(function* () {
       if (!url)
         return yield* fail("invalid-url", "The request URL is outside the configured Forgejo API.");
       let request = HttpClientRequest.make(input.method ?? "GET")(url).pipe(
-        HttpClientRequest.acceptJson,
+        HttpClientRequest.setHeader("accept", raw ? "text/plain" : "application/json"),
         HttpClientRequest.setHeader(
           "authorization",
           `token ${Redacted.value(connection.token.value)}`,
@@ -128,12 +139,12 @@ export const make = Effect.gen(function* () {
         stream: response.stream,
         maxBytes: 8 * 1024 * 1024,
       }).pipe(Effect.mapError(() => fail("failed", "The Forgejo response could not be read.")));
-      if (body.truncated || body.invalidUtf8)
+      if (!raw && (body.truncated || body.invalidUtf8))
         return yield* fail(
           "invalid-response",
           "The Forgejo response exceeds the limit or is not valid UTF-8.",
         );
-      return { text: body.text, link: response.headers.link, apiBase: connection.apiUrl, url };
+      return { ...body, link: response.headers.link, apiBase: connection.apiUrl, url };
     },
     Effect.timeoutOrElse({
       duration: "15 seconds",
@@ -152,7 +163,9 @@ export const make = Effect.gen(function* () {
   const page: ForgejoApi["Service"]["page"] = (input) =>
     Effect.gen(function* () {
       const response = yield* send({ ...input, method: "GET" });
-      const items = yield* decode(Schema.Array(input.schema), response.text);
+      const items = input.allowNullItems
+        ? ((yield* decode(Schema.NullOr(Schema.Array(input.schema)), response.text)) ?? [])
+        : yield* decode(Schema.Array(input.schema), response.text);
       const nextLink = response.link
         ?.split(/,(?=\s*<)/u)
         .find((part) => /;\s*rel="?next"?(?:;|\s|$)/u.test(part));
@@ -203,6 +216,7 @@ export const make = Effect.gen(function* () {
     } satisfies SourceControlProviderAuth;
   });
   return ForgejoApi.of({
+    requestText: (input) => send(input, true),
     request,
     page,
     getViewer,

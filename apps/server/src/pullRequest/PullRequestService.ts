@@ -1522,6 +1522,7 @@ export const make = Effect.gen(function* () {
               number: input.number,
               ...(input.commit === undefined ? {} : { commit: input.commit }),
               changeType: input.changeType,
+              ...(input.snapshot === undefined ? {} : { snapshot: input.snapshot }),
               oldPath: input.oldPath,
               newPath: input.newPath,
             }).pipe(Effect.mapError(toPullRequestError("diffFileContents")))

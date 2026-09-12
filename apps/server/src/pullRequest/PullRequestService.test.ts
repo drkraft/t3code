@@ -9,9 +9,9 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
+import { ProjectId } from "@t3tools/contracts";
 import type {
   OrchestrationProjectShell,
-  ProjectId,
   PullRequestReviewCapabilities,
   PullRequestReviewerCapabilities,
   SourceControlProviderKind,
@@ -212,40 +212,54 @@ function makeService(input: {
   );
 }
 
-it.effect("refines unknown self-hosted GitLab projects before listing merge requests", () =>
-  Effect.gen(function* () {
-    let refinementCalls = 0;
-    const selfHosted = project({
-      id: "p1",
-      title: "self-hosted",
-      workspaceRoot: "/gitlab",
-      repository: "group/project",
-      provider: "unknown",
-      host: "code.example.test",
-    });
-    const service = yield* makeService({
-      projects: [
-        selfHosted,
-        { ...selfHosted, id: "p2" as ProjectId, workspaceRoot: "/gitlab-worktree" },
-      ],
-      providers: [fakeProvider("gitlab")],
-      resolveHandle: ({ context }) => {
-        refinementCalls += 1;
-        assert.strictEqual(context?.remoteUrl, "https://code.example.test/group/project.git");
-        return Effect.succeed({
-          context: { ...context!, provider: { ...context!.provider, kind: "gitlab" } },
-          provider: undefined as never,
-        });
-      },
-    });
+for (const kind of ["gitlab", "forgejo"] as const) {
+  it.effect(`refines unknown self-hosted ${kind} projects before listing change requests`, () =>
+    Effect.gen(function* () {
+      let refinementCalls = 0;
+      const selfHosted = project({
+        id: "p1",
+        title: "self-hosted",
+        workspaceRoot: "/gitlab",
+        repository: "group/project",
+        provider: "unknown",
+        host: "code.example.test",
+      });
+      const service = yield* makeService({
+        projects: [
+          selfHosted,
+          { ...selfHosted, id: "p2" as ProjectId, workspaceRoot: "/gitlab-worktree" },
+        ],
+        providers: [
+          fakeProvider(kind, {
+            listChangeRequests: (input) => {
+              assert.strictEqual(input.host, "code.example.test");
+              assert.strictEqual(input.repository, "group/project");
+              return Effect.succeed({
+                items: [changeRequest(7, "2026-07-02T00:00:00Z")],
+                truncated: false,
+                continues: false,
+              });
+            },
+          }),
+        ],
+        resolveHandle: ({ context }) => {
+          refinementCalls += 1;
+          assert.strictEqual(context?.remoteUrl, "https://code.example.test/group/project.git");
+          return Effect.succeed({
+            context: { ...context!, provider: { ...context!.provider, kind } },
+            provider: undefined as never,
+          });
+        },
+      });
 
-    const result = yield* service.list({ state: "open" });
+      const result = yield* service.list({ state: "open" });
 
-    assert.strictEqual(refinementCalls, 1);
-    assert.strictEqual(result.providers[0]?.host, "code.example.test");
-    assert.strictEqual(result.providers[0]?.kind, "gitlab");
-  }),
-);
+      assert.strictEqual(refinementCalls, 1);
+      assert.strictEqual(result.providers[0]?.host, "code.example.test");
+      assert.strictEqual(result.providers[0]?.kind, kind);
+    }),
+  );
+}
 
 it.effect("derives a legacy repository host after refining its provider", () =>
   Effect.gen(function* () {
@@ -3401,6 +3415,60 @@ it.effect(
       yield* service.listStats({ refs: [ref(1)] });
       assert.deepStrictEqual(asked, [[1, 2], [3], [2], [1, 2, 3], [1], [1]]);
     }),
+);
+
+it.effect("expands a cached Forgejo diff using the displayed snapshot after the head changes", () =>
+  Effect.gen(function* () {
+    const current = project({
+      id: "forgejo-project",
+      title: "forgejo",
+      workspaceRoot: "/forgejo",
+      provider: "forgejo",
+      host: "forgejo.example.test",
+      repository: "owner/repo",
+    });
+    const reference = {
+      projectId: ProjectId.make("forgejo-project"),
+      host: "forgejo.example.test",
+      repository: "owner/repo",
+      number: 1,
+    };
+    const snapshot = { baseSha: "a".repeat(40), headSha: "b".repeat(40) };
+    let headSha = snapshot.headSha;
+    const service = yield* makeService({
+      projects: [current],
+      providers: [
+        fakeProvider("forgejo", {
+          getDiff: () =>
+            Effect.succeed({
+              patch: "displayed patch",
+              truncated: false,
+              nextCursor: null,
+              snapshot: { ...snapshot, headSha },
+            }),
+          getDiffFileContents: (input) => {
+            assert.strictEqual(input.host, "forgejo.example.test");
+            assert.strictEqual(input.repository, "owner/repo");
+            assert.deepStrictEqual(input.snapshot, snapshot);
+            return Effect.succeed({ oldContents: "old file", newContents: "displayed file" });
+          },
+        }),
+      ],
+    });
+    const displayed = yield* service.diff(reference);
+    headSha = "c".repeat(40);
+    const cached = yield* service.diff(reference);
+    assert.deepStrictEqual(cached.snapshot, snapshot);
+    assert.deepStrictEqual(displayed.snapshot, snapshot);
+    const contents = yield* service.diffFileContents({
+      ...reference,
+      snapshot: displayed.snapshot,
+      changeType: "change",
+      oldPath: "file.ts",
+      newPath: "file.ts",
+    });
+    assert.deepStrictEqual(contents, { oldContents: "old file", newContents: "displayed file" });
+  }),
 );
 
 it.effect("reads the fresh diff when detail or summary discovers a changed revision", () =>

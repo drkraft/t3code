@@ -19,6 +19,7 @@ import type {
   PullRequestMergeMethod,
   PullRequestMergeability,
   PullRequestOmittedFileStat,
+  PullRequestDiffSnapshot,
   PullRequestReaction,
   PullRequestReactionContent,
   PullRequestReviewCommentDraft,
@@ -245,6 +246,7 @@ export interface ProviderChangeRequestActivity {
 }
 
 export interface ProviderDiffSlice {
+  readonly snapshot?: PullRequestDiffSnapshot;
   readonly patch: string;
   /** Something in this slice could not be shown, as opposed to there being more slices. */
   readonly truncated: boolean;
@@ -421,6 +423,7 @@ export interface PullRequestProviderApi {
   readonly getDiffFileContents?: (
     input: ProviderRepositoryRef & {
       readonly number: number;
+      readonly snapshot?: PullRequestDiffSnapshot;
       readonly commit?: string | undefined;
       readonly changeType: "change" | "rename-pure" | "rename-changed" | "new" | "deleted";
       readonly oldPath: string;

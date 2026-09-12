@@ -4,6 +4,7 @@ import type {
   EnvironmentId,
   PullRequestDetailView,
   PullRequestDiffSide,
+  PullRequestDiffSnapshot,
   PullRequestOmittedFileStat,
   PullRequestRef,
   PullRequestReviewPosition,
@@ -78,7 +79,7 @@ import { PendingReviewCommentCard, ReviewThreadCard } from "./PullRequestReviewA
 import { PullRequestReviewBar } from "./PullRequestReviewBar";
 import {
   isFileDiffCollapsed,
-  isLineInFileDiff,
+  isReviewThreadInFileDiff,
   type DiffFoldOverride,
 } from "./pullRequestDiff.logic";
 import { PullRequestDiffStat, PullRequestMetaLine } from "./pullRequestPresentation";
@@ -106,6 +107,7 @@ const PULL_REQUEST_FILE_TREE_STORAGE_KEY = "t3code.pullRequestFileTreeOpen";
 
 /** One answer from the host: a whole number of files, and where the next one carries on. */
 interface DiffSlice {
+  readonly snapshot: PullRequestDiffSnapshot | undefined;
   /** What was asked for, null being the first slice. Identifies the slice among the loaded ones. */
   readonly cursor: string | null;
   readonly patch: string;
@@ -292,6 +294,7 @@ function PullRequestCodeTab({
       const next = {
         cursor,
         patch: data.patch,
+        snapshot: data.snapshot,
         truncated: data.truncated,
         nextCursor: data.nextCursor,
         omittedFileStats: data.omittedFileStats ?? [],
@@ -304,6 +307,8 @@ function PullRequestCodeTab({
       if (
         existing !== undefined &&
         existing.patch === next.patch &&
+        existing.snapshot?.baseSha === next.snapshot?.baseSha &&
+        existing.snapshot?.headSha === next.snapshot?.headSha &&
         existing.truncated === next.truncated &&
         existing.nextCursor === next.nextCursor &&
         existing.omittedFileStats.length === next.omittedFileStats.length &&
@@ -356,15 +361,25 @@ function PullRequestCodeTab({
     reportFailure: false,
   });
   const getDiffFileContents = useAtomCommand(pullRequestEnvironment.diffFileContents);
+  const diffSnapshot = loadedSlices[0]?.snapshot;
   const loadDiffFiles = useMemo(
     () =>
       createPullRequestDiffFileContentsLoader(getDiffFileContents, {
         environmentId,
         reference,
         commit,
+        ...(diffSnapshot ? { snapshot: diffSnapshot } : {}),
         cacheKey: `pull-request:${referenceKey}:${detail.updatedAt}:${commit ?? "all"}`,
       }),
-    [commit, detail.updatedAt, environmentId, getDiffFileContents, reference, referenceKey],
+    [
+      commit,
+      detail.updatedAt,
+      diffSnapshot,
+      environmentId,
+      getDiffFileContents,
+      reference,
+      referenceKey,
+    ],
   );
 
   // What is offered is the intersection of two different questions: what this host can do at
@@ -391,7 +406,7 @@ function PullRequestCodeTab({
       loadedSlices.map((slice) => {
         // The patch's own hash is part of the key: a refreshed page reuses its cursor, and a
         // key of position alone would keep handing back the parse of the patch it replaced.
-        const cacheKey = `pull-request:${scopeKey}:${resolvedTheme}:${slice.cursor ?? "first"}:${fnv1a32(slice.patch)}`;
+        const cacheKey = `pull-request:${scopeKey}:${resolvedTheme}:${slice.cursor ?? "first"}:${fnv1a32(slice.patch)}:${slice.snapshot?.baseSha ?? ""}:${slice.snapshot?.headSha ?? ""}`;
         const cached = parseCache.current.get(cacheKey);
         if (cached) return cached;
         const parsed = getRenderablePatch(slice.patch, cacheKey, {
@@ -429,13 +444,8 @@ function PullRequestCodeTab({
     // screen every conversation is listed rather than placed.
     if (commit !== null) return placed;
     for (const file of files) {
-      const path = resolveFileDiffPath(file);
       for (const thread of detail.reviewThreads) {
-        if (
-          thread.path === path &&
-          thread.line !== null &&
-          isLineInFileDiff(file, thread.side, thread.line)
-        ) {
+        if (isReviewThreadInFileDiff(file, thread)) {
           placed.add(thread.id);
         }
       }

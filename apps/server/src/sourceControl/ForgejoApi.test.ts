@@ -1,46 +1,11 @@
-import { assert, it, vi } from "@effect/vitest";
-import { ConfigProvider, Effect, Layer, Schema } from "effect";
+import { assert, it } from "@effect/vitest";
+import { Effect, Schema } from "effect";
 import * as TestClock from "effect/testing/TestClock";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 
-import { ForgejoApi, layer as forgejoLayer } from "./ForgejoApi.ts";
-import { ForgejoConnections } from "./ForgejoConnections.ts";
+import { ForgejoApi } from "./ForgejoApi.ts";
+import { harness } from "./ForgejoApi.testSupport.ts";
 
 const viewer = Schema.Struct({ id: Schema.Number, login: Schema.String });
-const connections = [
-  {
-    id: "one",
-    apiUrl: "https://forge.example/api/v1",
-    gitHosts: ["git.example:2222"],
-    tokenEnv: "ONE_TOKEN",
-  },
-  { id: "two", apiUrl: "https://other.example/api/v1", gitHosts: [], tokenEnv: "TWO_TOKEN" },
-];
-
-function harness(
-  response: (request: HttpClientRequest.HttpClientRequest) => Response,
-  env: Record<string, string> = { ONE_TOKEN: "first-secret", TWO_TOKEN: "second-secret" },
-) {
-  const execute = vi.fn((request: HttpClientRequest.HttpClientRequest) =>
-    Effect.succeed(HttpClientResponse.fromWeb(request, response(request))),
-  );
-  const layer = forgejoLayer.pipe(
-    Layer.provide(ForgejoConnections.layer),
-    Layer.provide(Layer.succeed(HttpClient.HttpClient, HttpClient.make(execute))),
-    Layer.provide(
-      ConfigProvider.layer(
-        ConfigProvider.fromEnv({
-          env: {
-            T3CODE_FORGEJO_CONNECTIONS: JSON.stringify(connections),
-            ...env,
-          },
-        }),
-      ),
-    ),
-  );
-  return { execute, layer };
-}
-
 it.effect("decodes the viewer and isolates credentials for identical paths on two hosts", () => {
   const { layer, execute } = harness((request) =>
     Response.json({
@@ -234,5 +199,43 @@ it.effect("does not retry a failed mutation", () => {
     assert.strictEqual(error.reason, "failed");
     assert.strictEqual(execute.mock.calls.length, 1);
     assert.strictEqual(execute.mock.calls[0]?.[0].method, "POST");
+  }).pipe(Effect.provide(layer));
+});
+
+it.effect("returns a bounded raw patch without changing JSON decoding", () => {
+  const { layer, execute } = harness(() => new Response("x".repeat(8 * 1024 * 1024 + 1)));
+  return Effect.gen(function* () {
+    const api = yield* ForgejoApi;
+    const result = yield* api.requestText({
+      host: "forge.example",
+      path: "/repos/a/b/pulls/1.diff",
+    });
+    assert.strictEqual(result.text.length, 8 * 1024 * 1024);
+    assert.strictEqual(result.truncated, true);
+    assert.strictEqual(result.invalidUtf8, false);
+    assert.strictEqual(execute.mock.calls[0]?.[0].headers.accept, "text/plain");
+  }).pipe(Effect.provide(layer));
+});
+
+it.effect("preserves a next link for explicitly nullable empty pages", () => {
+  const { layer } = harness(() =>
+    Response.json(null, { headers: { link: '<?page=2>; rel="next"' } }),
+  );
+  return Effect.gen(function* () {
+    const api = yield* ForgejoApi;
+    const result = yield* api.page({
+      host: "forge.example",
+      path: "/reactions",
+      schema: viewer,
+      allowNullItems: true,
+    });
+    assert.deepStrictEqual(result, {
+      items: [],
+      next: "https://forge.example/api/v1/reactions?page=2",
+    });
+    const strict = yield* api
+      .page({ host: "forge.example", path: "/reactions", schema: viewer })
+      .pipe(Effect.flip);
+    assert.strictEqual(strict.reason, "invalid-response");
   }).pipe(Effect.provide(layer));
 });

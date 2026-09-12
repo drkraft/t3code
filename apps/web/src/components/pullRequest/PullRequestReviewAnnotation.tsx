@@ -233,7 +233,21 @@ export function ReviewThreadCard({
           {thread.isResolved ? "Resolved" : "Open"} · {commentCount}{" "}
           {commentCount === 1 ? "comment" : "comments"}
         </button>
-        {thread.isOutdated ? <span>outdated</span> : null}
+        {thread.isOutdated === null ? (
+          <span>Position unverified</span>
+        ) : thread.isOutdated ? (
+          <span>outdated</span>
+        ) : null}
+        {thread.isOutdated === null && thread.comments[0]?.url ? (
+          <a
+            href={thread.comments[0].url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground underline"
+          >
+            View on Forgejo
+          </a>
+        ) : null}
         {onFix ? (
           <Button
             size="xs"

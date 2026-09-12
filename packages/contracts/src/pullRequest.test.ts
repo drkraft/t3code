@@ -7,8 +7,37 @@ import {
   PullRequestListInput,
   PullRequestListResult,
   PullRequestReviewerRequestInput,
+  pullRequestHostOf,
   resolvePullRequestAuthorFilter,
 } from "./pullRequest.ts";
+
+describe("pullRequestHostOf", () => {
+  it.each([
+    ["127.0.0.1/qa/fixture", "http://127.0.0.1:59346/qa/fixture.git", "127.0.0.1:59346"],
+    [
+      "forgejo.example/team/repo",
+      "ssh://git@forgejo.example:2222/team/repo.git",
+      "forgejo.example:2222",
+    ],
+    [
+      "forgejo.example:8443/team/repo",
+      "https://forgejo.example:8443/team/repo.git",
+      "forgejo.example:8443",
+    ],
+    [
+      "canonical.example/team/repo",
+      "https://alias.example:8443/team/repo.git",
+      "canonical.example",
+    ],
+    ["forgejo.example/team/repo", "git@forgejo.example:team/repo.git", "forgejo.example"],
+  ])(
+    "routes %s using its remote authority when a legacy key lost its port",
+    (canonicalKey, remoteUrl, expected) => {
+      const identity = { canonicalKey, locator: { remoteUrl } };
+      expect(pullRequestHostOf(identity, "unknown")).toBe(expected);
+    },
+  );
+});
 
 const decodeListResult = Schema.decodeUnknownSync(PullRequestListResult);
 const decodeListInput = Schema.decodeUnknownSync(PullRequestListInput);

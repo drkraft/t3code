@@ -126,7 +126,7 @@ export function normalizeGitRemoteUrl(value: string): string {
         .filter((segment) => segment.length > 0)
         .join("/");
       if (url.hostname && repositoryPath.includes("/")) {
-        return `${url.hostname}/${repositoryPath}`;
+        return `${url.host}/${repositoryPath}`;
       }
     } catch {
       return normalized;

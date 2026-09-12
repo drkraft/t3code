@@ -9,6 +9,8 @@ const TREE_LIST_MAX_BYTES = 100_000;
 const TRUNCATION_MARKER = "[truncated]";
 
 const TEMPLATE_PATHS = [
+  ".forgejo/pull_request_template.md",
+  ".forgejo/PULL_REQUEST_TEMPLATE.md",
   ".github/pull_request_template.md",
   ".github/PULL_REQUEST_TEMPLATE.md",
   "pull_request_template.md",
@@ -18,6 +20,7 @@ const TEMPLATE_PATHS = [
 ] as const;
 
 const TEMPLATE_DIRECTORIES = [
+  ".forgejo/PULL_REQUEST_TEMPLATE",
   ".github/PULL_REQUEST_TEMPLATE",
   "PULL_REQUEST_TEMPLATE",
   "docs/PULL_REQUEST_TEMPLATE",

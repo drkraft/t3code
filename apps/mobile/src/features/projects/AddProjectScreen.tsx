@@ -111,7 +111,8 @@ function sourceFromParam(value: string | string[] | undefined): AddProjectRemote
     source === "github" ||
     source === "gitlab" ||
     source === "bitbucket" ||
-    source === "azure-devops"
+    source === "azure-devops" ||
+    source === "forgejo"
   ) {
     return source;
   }
@@ -430,7 +431,7 @@ function SourceControlRow(props: {
       ? "Clone from a remote URL"
       : `Clone ${addProjectRemoteSourceLabel(props.source)} ${props.hint}`;
   const icon =
-    props.source === "url" ? (
+    props.source === "url" || props.source === "forgejo" ? (
       <SymbolView name="link" size={17} tintColorClassName={"accent-icon"} type="monochrome" />
     ) : (
       <SourceControlIcon kind={props.source} size={18} colorClassName="accent-icon" />

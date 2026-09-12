@@ -9,6 +9,7 @@ import { VcsRepositoryDetectionError } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
 import type * as VcsDriver from "../vcs/VcsDriver.ts";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as AzureDevOpsCli from "./AzureDevOpsCli.ts";
@@ -88,6 +89,8 @@ function makeRegistry(input: {
       Layer.mergeAll(
         registryLayer,
         processLayer,
+        Layer.mock(GitVcsDriver.GitVcsDriver)({}),
+        NodeServices.layer,
         Layer.mock(AzureDevOpsCli.AzureDevOpsCli)({}),
         Layer.mock(BitbucketApi.BitbucketApi)({}),
         Layer.mock(GitHubCli.GitHubCli)({}),

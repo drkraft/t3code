@@ -9,6 +9,16 @@ import {
 } from "./sourceControl.ts";
 
 describe("source control presentation", () => {
+  it("uses the generic pull request icon for a configured Forgejo provider", () => {
+    expect(
+      resolveChangeRequestPresentation({
+        kind: "forgejo",
+        name: "Forgejo",
+        baseUrl: "https://forge.example.test",
+      }).icon,
+    ).toBe("change-request");
+  });
+
   it("uses merge request terminology for GitLab", () => {
     expect(getChangeRequestTerminologyForKind("gitlab")).toEqual({
       shortLabel: "MR",
@@ -44,6 +54,12 @@ describe("source control presentation", () => {
 });
 
 describe("detectSourceControlProviderFromRemoteUrl", () => {
+  it("leaves Forgejo-looking hosts unknown without server configuration", () => {
+    expect(
+      detectSourceControlProviderFromRemoteUrl("https://forgejo.example.test/owner/repo.git")?.kind,
+    ).toBe("unknown");
+  });
+
   it("detects common source control hosts", () => {
     expect(detectSourceControlProviderFromRemoteUrl("git@github.com:owner/repo.git")?.kind).toBe(
       "github",

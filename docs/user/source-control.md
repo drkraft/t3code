@@ -44,6 +44,29 @@ export T3CODE_BITBUCKET_API_TOKEN="your-token"
 The access token takes precedence if both are configured. Restart the server after changing these
 variables.
 
+### Forgejo connection setup
+
+Configure instances on the machine running the server. Each connection names an API URL,
+Git hosts or SSH aliases, and the environment variable containing its token:
+
+```bash
+export T3CODE_FORGEJO_CONNECTIONS='[{"id":"work","apiUrl":"https://forge.example/api/v1","gitHosts":["git.example:2222","work-git"],"tokenEnv":"WORK_FORGEJO_TOKEN"}]'
+```
+
+Supply `WORK_FORGEJO_TOKEN` through your server's environment or secret manager. Tokens need
+permission to read the current user and repositories, plus write access for creating repositories
+or pull requests. The API hostname is recognized automatically; SSH ports
+must match explicitly. Give each host or alias to one connection only. Restart the server after
+changing configuration, then use **Settings → Source Control → Rescan** to check the accounts.
+If you use a credential-injecting proxy with Node, start the server with `NODE_USE_ENV_PROXY=1`.
+
+Choose Forgejo when cloning or publishing a repository. With one configured instance, use
+`owner/repository`; with multiple instances, enter the full repository URL to select the host.
+Git authentication for cloning and pushing must also be configured on the server.
+
+Forgejo supports repository operations and pull request creation and checkout. The integrated
+pull request review view is not available yet. Commit or stash local changes before checkout.
+
 ### Azure DevOps
 
 Install [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/), add the DevOps extension, and sign in:

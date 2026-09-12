@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -7,6 +8,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import { VcsProcessSpawnError } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as AzureDevOpsCli from "./AzureDevOpsCli.ts";
@@ -19,6 +21,7 @@ import * as SourceControlProviderRegistry from "./SourceControlProviderRegistry.
 const sourceControlProviderRegistryTestLayer = (input: {
   readonly bitbucket: Partial<BitbucketApi.BitbucketApi["Service"]>;
   readonly process: Partial<VcsProcess.VcsProcess["Service"]>;
+  readonly forgejoConfig?: string;
 }) =>
   SourceControlProviderRegistry.layer.pipe(
     Layer.provide(
@@ -30,8 +33,19 @@ const sourceControlProviderRegistryTestLayer = (input: {
         Layer.mock(BitbucketApi.BitbucketApi)(input.bitbucket),
         Layer.mock(GitHubCli.GitHubCli)({}),
         Layer.mock(GitLabCli.GitLabCli)({}),
+        Layer.mock(GitVcsDriver.GitVcsDriver)({}),
+        NodeServices.layer,
         Layer.mock(VcsDriverRegistry.VcsDriverRegistry)({}),
         Layer.mock(VcsProcess.VcsProcess)(input.process),
+      ),
+    ),
+    Layer.provide(
+      ConfigProvider.layer(
+        ConfigProvider.fromEnv({
+          env: {
+            T3CODE_FORGEJO_CONNECTIONS: input.forgejoConfig ?? "[]",
+          },
+        }),
       ),
     ),
   );
@@ -161,6 +175,12 @@ it.effect("reports implemented tools separately from locally available executabl
           auth: "unauthenticated",
           account: Option.none(),
         },
+        {
+          kind: "forgejo",
+          status: "available",
+          auth: "unknown",
+          account: Option.none(),
+        },
       ],
     );
     const bitbucket = result.sourceControlProviders.find((item) => item.kind === "bitbucket");
@@ -246,12 +266,14 @@ Logged in to gitlab.com as gitlab-user
     const result = yield* discovery.discover;
 
     assert.deepStrictEqual(
-      result.sourceControlProviders.map((item) => ({
-        kind: item.kind,
-        auth: item.auth.status,
-        account: item.auth.account,
-        detail: item.auth.detail,
-      })),
+      result.sourceControlProviders
+        .filter((item) => item.kind !== "forgejo")
+        .map((item) => ({
+          kind: item.kind,
+          auth: item.auth.status,
+          account: item.auth.account,
+          detail: item.auth.detail,
+        })),
       [
         {
           kind: "github",
@@ -281,3 +303,33 @@ Logged in to gitlab.com as gitlab-user
     );
   }).pipe(Effect.provide(testLayer));
 });
+
+it.effect("keeps other providers discoverable when Forgejo configuration is invalid", () =>
+  Effect.gen(function* () {
+    const registry = yield* SourceControlProviderRegistry.SourceControlProviderRegistry;
+    const providers = yield* registry.discover;
+    assert.strictEqual(providers.length, 5);
+    const forgejo = providers.find((provider) => provider.kind === "forgejo");
+    assert.strictEqual(forgejo?.auth.status, "unknown");
+    assert.ok(forgejo);
+    assert.notInclude(
+      Option.getOrElse(forgejo.auth.detail, () => ""),
+      "private-invalid-value",
+    );
+  }).pipe(
+    Effect.provide(
+      sourceControlProviderRegistryTestLayer({
+        forgejoConfig: "private-invalid-value",
+        bitbucket: {
+          probeAuth: Effect.succeed({
+            status: "authenticated",
+            account: Option.none(),
+            host: Option.none(),
+            detail: Option.none(),
+          }),
+        },
+        process: { run: () => Effect.succeed(processOutput("")) },
+      }),
+    ),
+  ),
+);

@@ -71,6 +71,8 @@ resulting draft state on Forgejo after changing the title.
 
 Choose Forgejo when cloning or publishing a repository. With one configured instance, use
 `owner/repository`; with multiple instances, enter the full repository URL to select the host.
+When cloning, an HTTP or HTTPS repository URL uses the server's HTTP(S) clone URL;
+an SSH URL or `owner/repository` uses SSH.
 Git authentication for cloning and pushing must also be configured on the server.
 
 Forgejo supports repository operations, pull request creation and checkout, and integrated review.

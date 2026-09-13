@@ -2153,7 +2153,7 @@ function OpenCommandPaletteDialog(props: {
         source: addProjectCloneFlow.source,
         repositoryInput: rawRepository,
         repository,
-        remoteUrl: getDefaultCloneUrl(repository),
+        remoteUrl: getDefaultCloneUrl(repository, rawRepository),
       });
       setHighlightedItemValue(null);
       setQuery(destinationPath);

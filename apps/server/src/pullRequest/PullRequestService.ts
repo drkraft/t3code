@@ -1404,6 +1404,7 @@ export const make = Effect.gen(function* () {
             deletions: changeRequest.deletions,
             changedFiles: changeRequest.changedFiles,
             headBranch: changeRequest.headBranch,
+            ...(changeRequest.headSha == null ? {} : { headSha: changeRequest.headSha }),
             ...(changeRequest.headRepositoryNameWithOwner === undefined
               ? {}
               : { headRepositoryNameWithOwner: changeRequest.headRepositoryNameWithOwner }),
@@ -1625,6 +1626,9 @@ export const make = Effect.gen(function* () {
                 number: input.number,
                 action: input.action,
                 ...(input.stackNumber === undefined ? {} : { stackNumber: input.stackNumber }),
+                ...(input.expectedHeadSha === undefined
+                  ? {}
+                  : { expectedHeadSha: input.expectedHeadSha }),
                 ...(input.expectedStackHeads === undefined
                   ? {}
                   : { expectedStackHeads: input.expectedStackHeads }),

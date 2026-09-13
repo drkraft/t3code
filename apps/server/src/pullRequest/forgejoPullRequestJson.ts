@@ -31,6 +31,8 @@ export const PullRequest = Schema.Struct({
   state: Schema.Literals(["open", "closed"]),
   merged: Schema.Boolean,
   draft: Schema.Boolean,
+  allow_maintainer_edit: Schema.optional(Schema.Boolean),
+  flow: Schema.optional(Schema.Int),
   mergeable: Schema.optional(Schema.NullOr(Schema.Boolean)),
   merge_base: Schema.String,
   head: Branch,
@@ -67,8 +69,8 @@ export const toChangeRequest = (pr: typeof PullRequest.Type): ProviderChangeRequ
   baseBranch: pr.base.ref,
   state: pr.merged ? "merged" : pr.state,
   isDraft: pr.draft,
-  mergeability:
-    pr.mergeable === true ? "mergeable" : pr.mergeable === false ? "conflicting" : "unknown",
+  // Forgejo also reports false while checking, after check errors, and for WIP titles.
+  mergeability: pr.mergeable === true ? "mergeable" : "unknown",
   additions: pr.additions,
   deletions: pr.deletions,
   createdAt: pr.created_at,

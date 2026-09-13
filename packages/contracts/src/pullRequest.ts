@@ -759,6 +759,7 @@ export const PullRequestInvalidateInput = Schema.Struct({
 export type PullRequestInvalidateInput = typeof PullRequestInvalidateInput.Type;
 
 export const PullRequestDetail = Schema.Struct({
+  headSha: Schema.optional(TrimmedNonEmptyString),
   provider: SourceControlProviderKind,
   capabilities: PullRequestCapabilities,
   /** What this viewer may do, which `capabilities` says nothing about. Both narrow the page. */
@@ -940,6 +941,7 @@ export const PullRequestStackHead = Schema.Struct({
 export type PullRequestStackHead = typeof PullRequestStackHead.Type;
 
 export const PullRequestActionInput = Schema.Struct({
+  expectedHeadSha: Schema.optional(TrimmedNonEmptyString),
   /** Native stack scope; only send to environments advertising pullRequestStackActions. */
   stackNumber: Schema.optional(PositiveInt),
   expectedStackHeads: Schema.optional(Schema.Array(PullRequestStackHead)),

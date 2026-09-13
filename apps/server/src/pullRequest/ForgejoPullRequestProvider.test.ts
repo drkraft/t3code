@@ -8,30 +8,39 @@ import { pullRequestFixture as pr } from "./forgejoPullRequestTestHarness.ts";
 
 const input = { cwd: "/repo", host: "forge.example", repository: "team/repo", number: 1 };
 it.effect(
-  "reads detail with current-head checks and advertises review writes without U6 actions",
+  "reads detail with current-head checks and advertises review writes and U6 actions",
   () => {
     const { layer, requests } = harness((request) =>
-      request.url.endsWith("/user")
-        ? Response.json({ id: 7, login: "reviewer" })
-        : request.url.endsWith("/repos/team/repo")
-          ? Response.json({
-              archived: false,
-              has_pull_requests: true,
-              permissions: { pull: true, push: true, admin: false },
-            })
-          : request.url.includes("/reviews?")
-            ? Response.json([
-                { state: "REQUEST_REVIEW", user: { id: 3, login: "carol" }, team: null },
-              ])
-            : request.url.includes("/statuses/")
-              ? Response.json([])
-              : request.url.includes("/actions/runs")
-                ? Response.json({ total_count: 0, workflow_runs: [] })
-                : Response.json({
-                    ...pr,
-                    is_locked: false,
-                    requested_reviewers_teams: [{ id: 9, name: "maintainers" }],
-                  }),
+      request.url.includes("/branches/")
+        ? Response.json({
+            protected: false,
+            user_can_merge: false,
+            user_can_push: false,
+            enable_status_check: false,
+            status_check_contexts: [],
+            required_approvals: 0,
+          })
+        : request.url.endsWith("/user")
+          ? Response.json({ id: 7, login: "reviewer" })
+          : request.url.endsWith("/repos/team/repo") || request.url.endsWith("/repos/alice/repo")
+            ? Response.json({
+                archived: false,
+                has_pull_requests: true,
+                permissions: { pull: true, push: true, admin: false },
+              })
+            : request.url.includes("/reviews?")
+              ? Response.json([
+                  { state: "REQUEST_REVIEW", user: { id: 3, login: "carol" }, team: null },
+                ])
+              : request.url.includes("/statuses/")
+                ? Response.json([])
+                : request.url.includes("/actions/runs")
+                  ? Response.json({ total_count: 0, workflow_runs: [] })
+                  : Response.json({
+                      ...pr,
+                      is_locked: false,
+                      requested_reviewers_teams: [{ id: 9, name: "maintainers" }],
+                    }),
     );
     return Effect.gen(function* () {
       const provider = yield* Provider.make;
@@ -43,8 +52,15 @@ it.effect(
         ["carol"],
       );
       assert.isTrue(requests.some((request) => request.url.includes("/statuses/new-head")));
-      assert.deepStrictEqual(detail.viewerPermissions.actions, []);
-      assert.deepStrictEqual(provider.capabilities.actions, []);
+      assert.deepStrictEqual(detail.viewerPermissions.actions, ["close"]);
+      assert.deepStrictEqual(provider.capabilities.actions, [
+        "merge",
+        "close",
+        "reopen",
+        "draft",
+        "ready",
+        "update-branch",
+      ]);
       assert.isTrue(provider.capabilities.comment);
       assert.isTrue(provider.capabilities.review.inlineComment);
       assert.isTrue(provider.capabilities.review.reply);

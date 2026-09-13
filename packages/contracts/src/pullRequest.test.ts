@@ -199,6 +199,22 @@ describe("PullRequestReviewerRequestInput", () => {
   });
 });
 
+describe("action head precondition", () => {
+  const ref = { projectId: "project-1", repository: "acme/web", number: 7 };
+
+  it("preserves the observed head for merge and update actions", () => {
+    for (const action of ["merge", "update-branch"]) {
+      expect(decodeAction({ ...ref, action, expectedHeadSha: "a".repeat(40) })).toMatchObject({
+        expectedHeadSha: "a".repeat(40),
+      });
+    }
+  });
+
+  it("rejects an empty head precondition", () => {
+    expect(() => decodeAction({ ...ref, action: "merge", expectedHeadSha: " " })).toThrow();
+  });
+});
+
 describe("updating a branch that has fallen behind its base", () => {
   const ref = { projectId: "project-1", repository: "acme/web", number: 7 };
 

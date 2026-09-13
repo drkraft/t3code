@@ -29,3 +29,15 @@ it("retains draft truth from the server and tolerates deleted authors and null a
   assert.strictEqual(row.author, null);
   assert.deepStrictEqual(row.labels, []);
 });
+
+for (const draft of [true, false]) {
+  it(`does not infer a conflict from an ambiguous false mergeable flag (draft=${draft})`, () => {
+    const row = toChangeRequest(decode({ ...pullRequestFixture, draft, mergeable: false }));
+    assert.strictEqual(row.mergeability, "unknown");
+    assert.strictEqual(row.isDraft, draft);
+  });
+}
+
+it("preserves a positive server mergeability result", () => {
+  assert.strictEqual(toChangeRequest(decode(pullRequestFixture)).mergeability, "mergeable");
+});

@@ -2,6 +2,7 @@ import { assert, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Layer } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import * as Api from "../sourceControl/ForgejoApi.ts";
+import { pullRequestFixture as pr } from "./forgejoPullRequestTestHarness.ts";
 import { make } from "./ForgejoPullRequestPermissions.ts";
 
 const input = { cwd: "/repo", host: "forge.example", repository: "org/repo", number: 1 };
@@ -11,7 +12,21 @@ const harness = (respond: (url: URL) => Response) =>
       Layer.succeed(
         HttpClient.HttpClient,
         HttpClient.make((request) =>
-          Effect.succeed(HttpClientResponse.fromWeb(request, respond(new URL(request.url)))),
+          Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              request.url.includes("/branches/")
+                ? Response.json({
+                    protected: false,
+                    user_can_merge: false,
+                    user_can_push: false,
+                    enable_status_check: false,
+                    status_check_contexts: [],
+                    required_approvals: 0,
+                  })
+                : respond(new URL(request.url)),
+            ),
+          ),
         ),
       ),
     ),
@@ -41,7 +56,7 @@ it.effect("withholds approval and rejection when the viewer authored the pull re
           url.pathname.endsWith("/user")
             ? { id: 7, login: "renamed" }
             : url.pathname.endsWith("/pulls/1")
-              ? { user: { id: 7, login: "original" } }
+              ? { ...pr, user: { id: 7, login: "original" } }
               : { archived: false },
         ),
       ),
@@ -54,7 +69,8 @@ it.effect("preserves unknown PR-unit rights when code push is denied and the PR 
     const permissions = yield* make;
     const result = yield* permissions.getViewerPermissions(input);
     assert.deepStrictEqual(result, {
-      actions: [],
+      actions: ["close"],
+      updateMethods: [],
       comment: true,
       resolve: false,
       verdicts: ["comment", "approve", "request-changes"],
@@ -68,7 +84,7 @@ it.effect("preserves unknown PR-unit rights when code push is denied and the PR 
           url.pathname.endsWith("/user")
             ? { id: 8, login: "viewer" }
             : url.pathname.endsWith("/pulls/1")
-              ? { user: { id: 7, login: "author" }, is_locked: true }
+              ? { ...pr, user: { id: 7, login: "author" }, is_locked: true }
               : { archived: false, permissions: { push: false, pull: true, admin: false } },
         ),
       ),
@@ -81,7 +97,11 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const permissions = yield* make;
-      const result = yield* permissions.getViewerPermissions(input, { user: null });
+      const result = yield* permissions.getViewerPermissions(input, {
+        ...pr,
+        state: "open",
+        user: null,
+      });
       assert.isFalse(result.comment);
       assert.deepStrictEqual(result.verdicts, ["comment", "approve", "request-changes"]);
       assert.isTrue(result.labels);
@@ -114,7 +134,7 @@ it.effect("reloads viewer and archive state on each permission request", () => {
           url.pathname.endsWith("/user")
             ? viewer
             : url.pathname.endsWith("/pulls/1")
-              ? { user: { id: 7, login: "author" } }
+              ? { ...pr, user: { id: 7, login: "author" } }
               : { archived },
         ),
       ),
@@ -125,7 +145,9 @@ it.effect("reloads viewer and archive state on each permission request", () => {
 it.effect("propagates permission-read failures instead of granting stale rights", () =>
   Effect.gen(function* () {
     const permissions = yield* make;
-    const error = yield* permissions.getViewerPermissions(input, { user: null }).pipe(Effect.flip);
+    const error = yield* permissions
+      .getViewerPermissions(input, { ...pr, state: "open", user: null })
+      .pipe(Effect.flip);
     assert.strictEqual(error.reason, "forbidden");
   }).pipe(Effect.provide(harness(() => new Response(null, { status: 403 })))),
 );

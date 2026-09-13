@@ -8,6 +8,7 @@ import * as Checks from "./ForgejoPullRequestChecks.ts";
 import * as Listing from "./ForgejoPullRequestListing.ts";
 import * as Review from "./ForgejoPullRequestReview.ts";
 import * as Metadata from "./ForgejoPullRequestMetadata.ts";
+import * as Actions from "./ForgejoPullRequestActions.ts";
 import * as Permissions from "./ForgejoPullRequestPermissions.ts";
 import { PullRequest, actor, repositoryPath, toChangeRequest } from "./forgejoPullRequestJson.ts";
 import { PullRequestProviderError, type PullRequestProviderApi } from "./PullRequestProvider.ts";
@@ -16,8 +17,9 @@ const CAPABILITIES: PullRequestCapabilities = {
   diff: true,
   search: true,
   comment: true,
-  actions: [],
-  mergeMethods: [],
+  actions: ["merge", "close", "reopen", "draft", "ready", "update-branch"],
+  mergeMethods: ["merge", "squash", "rebase"],
+  updateMethods: ["merge", "rebase"],
   reactions: true,
   review: {
     inlineComment: true,
@@ -51,7 +53,7 @@ const unavailable = (operation: string) =>
       provider: "forgejo",
       operation,
       reason: "failed",
-      detail: "Forgejo review writes are not implemented yet.",
+      detail: "Forgejo REST does not support this operation; use the Forgejo link.",
     }),
   );
 export const make = Effect.gen(function* () {
@@ -64,6 +66,7 @@ export const make = Effect.gen(function* () {
   const review = yield* Review.make;
   const metadata = yield* Metadata.make;
   const permissions = yield* Permissions.make;
+  const actions = yield* Actions.make;
   const get = Effect.fn("ForgejoPullRequestProvider.get")(function* (input: {
     readonly host: string;
     readonly repository: string;
@@ -105,8 +108,12 @@ export const make = Effect.gen(function* () {
       const requested = yield* metadata
         .listRequestedReviewers(input)
         .pipe(Effect.mapError(fail("getChangeRequest")));
+      const policy = yield* permissions
+        .read(input, pr)
+        .pipe(Effect.mapError(fail("getChangeRequest")));
       return {
         ...toChangeRequest(pr),
+        headSha: pr.head.sha,
         body: pr.body,
         changedFiles: pr.changed_files,
         closedAt: pr.closed_at,
@@ -124,10 +131,8 @@ export const make = Effect.gen(function* () {
         ],
         checks: statuses,
         checksState: Checks.checksState(statuses),
-        mergeCapabilities: { merge: false, squash: false, rebase: false },
-        viewerPermissions: yield* permissions
-          .getViewerPermissions(input, pr)
-          .pipe(Effect.mapError(fail("getChangeRequest"))),
+        mergeCapabilities: policy.mergeCapabilities,
+        viewerPermissions: policy.viewerPermissions,
       };
     }),
     getChangeRequestSummary: (input) =>
@@ -144,7 +149,7 @@ export const make = Effect.gen(function* () {
     getDiff: (input) => diff.getDiff(input).pipe(Effect.mapError(fail("getDiff"))),
     getDiffFileContents: (input) =>
       diff.getDiffFileContents(input).pipe(Effect.mapError(fail("getDiffFileContents"))),
-    runAction: () => unavailable("runAction"),
+    runAction: (input) => actions.runAction(input).pipe(Effect.mapError(fail("runAction"))),
     comment: (input) => review.comment(input).pipe(Effect.mapError(fail("comment"))),
     updateChangeRequest: (input) =>
       review.updateChangeRequest(input).pipe(Effect.mapError(fail("updateChangeRequest"))),

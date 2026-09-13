@@ -27,6 +27,18 @@ const load = (raw?: string, extraEnv: Record<string, string> = {}) =>
   Effect.service(ForgejoConnections).pipe(Effect.provide(connectionLayer(raw, extraEnv)));
 
 describe("ForgejoConnections", () => {
+  it.effect("keeps effective draft prefixes scoped to each configured instance", () =>
+    Effect.gen(function* () {
+      const service = yield* load(
+        encodeJson([
+          { ...primary, wipPrefixes: ["Draft:", "[IN PROGRESS]"] },
+          { ...primary, id: "other", apiUrl: "https://other.example/api/v1", gitHosts: [] },
+        ]),
+      );
+      expect(service.resolve("ForgeSSH")?.wipPrefixes).toEqual(["Draft:", "[IN PROGRESS]"]);
+      expect(service.resolve("other.example")?.wipPrefixes).toBeUndefined();
+    }),
+  );
   it.effect("leaves other providers available when no connections are configured", () =>
     Effect.gen(function* () {
       const service = yield* load();
@@ -131,6 +143,8 @@ describe("ForgejoConnections", () => {
     "not-json",
     "{}",
     encodeJson([{ ...primary, tokenEnv: "BAD TOKEN" }]),
+    encodeJson([{ ...primary, wipPrefixes: [""] }]),
+    encodeJson([{ ...primary, wipPrefixes: ["  "] }]),
     encodeJson([{ ...primary, apiUrl: "https://user:secret@forge.example/api/v1" }]),
     encodeJson([{ ...primary, apiUrl: "https://forge.example/api/v1?token=secret" }]),
     encodeJson([{ ...primary, apiUrl: "https://forge.example/api/v1#secret" }]),

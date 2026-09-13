@@ -60,12 +60,22 @@ must match explicitly. Give each host or alias to one connection only. Restart t
 changing configuration, then use **Settings → Source Control → Rescan** to check the accounts.
 If you use a credential-injecting proxy with Node, start the server with `NODE_USE_ENV_PROXY=1`.
 
+To change pull requests between draft and ready, add `wipPrefixes` to the connection with the
+instance's effective `[repository.pull-request] WORK_IN_PROGRESS_PREFIXES` values, for example
+`"wipPrefixes":["WIP:","[WIP]"]`. Ask the instance administrator for these values; Forgejo's API
+does not expose them. Draft transitions are unavailable until they are configured. T3 checks the
+resulting draft state on Forgejo after changing the title.
+
 Choose Forgejo when cloning or publishing a repository. With one configured instance, use
 `owner/repository`; with multiple instances, enter the full repository URL to select the host.
 Git authentication for cloning and pushing must also be configured on the server.
 
-Forgejo supports repository operations and pull request creation and checkout. The integrated
-pull request review view is not available yet. Commit or stash local changes before checkout.
+Forgejo supports repository operations, pull request creation and checkout, and integrated review.
+You can comment, review, edit, request reviewers, change labels and reactions, and close or reopen
+pull requests. Merge and branch update methods follow the repository's settings and your access.
+Forgejo checks its branch protections when an action runs; it may refuse a rule that the API could
+not report beforehand. Thread resolution and automatic merge remain available on Forgejo through
+the pull request's host link. Commit or stash local changes before checkout.
 
 ### Azure DevOps
 

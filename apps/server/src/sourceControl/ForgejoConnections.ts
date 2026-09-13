@@ -4,6 +4,7 @@ export interface ForgejoConnection {
   readonly id: string;
   readonly apiUrl: string;
   readonly gitHosts: readonly string[];
+  readonly wipPrefixes?: readonly string[];
   readonly token: Option.Option<Redacted.Redacted<string>>;
 }
 
@@ -63,6 +64,7 @@ const ConnectionConfig = Schema.Struct({
     Schema.String.check(Schema.makeFilter((value) => authority(value) !== null)),
   ),
   tokenEnv: Schema.String.check(Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/u)),
+  wipPrefixes: Schema.optional(Schema.Array(Schema.String.check(Schema.isPattern(/\S/u)))),
 });
 
 const decodeConnections = Schema.decodeEffect(
@@ -114,6 +116,7 @@ export const make = Effect.gen(function* () {
       id: config.id,
       apiUrl: apiUrl.href.replace(/\/$/u, ""),
       gitHosts: [...hosts],
+      ...(config.wipPrefixes === undefined ? {} : { wipPrefixes: config.wipPrefixes }),
       token: Option.filter(token, (value) => Redacted.value(value).trim() !== ""),
     };
     for (const host of hosts) {

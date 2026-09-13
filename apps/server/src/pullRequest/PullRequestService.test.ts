@@ -2271,6 +2271,37 @@ it.effect("refuses an empty reply before it reaches the host", () =>
   }),
 );
 
+it.effect("preserves the caller's observed head through action permission reads", () =>
+  Effect.gen(function* () {
+    const actions: Parameters<PullRequestProviderApi["runAction"]>[0][] = [];
+    const service = yield* makeService({
+      projects: [
+        project({ id: "p1", title: "t3code", workspaceRoot: "/a", repository: "pingdotgg/t3code" }),
+      ],
+      providers: [
+        fakeProvider("github", {
+          getChangeRequestSummary: () => Effect.succeed(changeRequest(1, "2026-07-02T00:00:00Z")),
+          runAction: (input) => {
+            actions.push(input);
+            return Effect.void;
+          },
+        }),
+      ],
+    });
+    yield* service.runAction({
+      projectId: ProjectId.make("p1"),
+      repository: "pingdotgg/t3code",
+      number: 1,
+      action: "merge",
+      expectedHeadSha: "a".repeat(40),
+    });
+    assert.deepStrictEqual(
+      actions.map((input) => input.expectedHeadSha),
+      ["a".repeat(40)],
+    );
+  }),
+);
+
 it.effect("refuses a merge strategy the host does not offer", () =>
   Effect.gen(function* () {
     let ranWith: string | null = null;
@@ -3693,7 +3724,7 @@ it.effect("answers a known pull request immediately while the host refreshes", (
             Effect.gen(function* () {
               calls += 1;
               if (calls > 1) yield* Deferred.await(gate);
-              return hostedChangeRequest("cached body", 4);
+              return { ...hostedChangeRequest("cached body", 4), headSha: "a".repeat(40) };
             }),
         }),
       ],
@@ -3701,11 +3732,13 @@ it.effect("answers a known pull request immediately while the host refreshes", (
 
     const first = yield* service.detail(reference);
     assert.strictEqual(first.body, "cached body");
+    assert.strictEqual(first.headSha, "a".repeat(40));
     assert.strictEqual(first.additions, 4);
 
     yield* TestClock.adjust("16 seconds");
     const second = yield* service.detail(reference);
     assert.strictEqual(second.body, "cached body");
+    assert.strictEqual(second.headSha, "a".repeat(40));
     assert.strictEqual(second.additions, 4);
     yield* Effect.yieldNow;
     assert.strictEqual(calls, 2);

@@ -6,6 +6,31 @@ import { ForgejoApi } from "./ForgejoApi.ts";
 import { harness } from "./ForgejoApi.testSupport.ts";
 
 const viewer = Schema.Struct({ id: Schema.Number, login: Schema.String });
+
+for (const status of [200, 204]) {
+  it.effect(
+    `accepts empty HTTP ${status} mutation responses only for a void response contract`,
+    () => {
+      const { layer, execute } = harness(
+        () => new Response(status === 204 ? null : "", { status }),
+      );
+      return Effect.gen(function* () {
+        const api = yield* ForgejoApi;
+        yield* api.request({
+          host: "forge.example",
+          path: "/reaction",
+          method: "DELETE",
+          schema: Schema.Void,
+        });
+        const error = yield* api
+          .request({ host: "forge.example", path: "/user", schema: viewer })
+          .pipe(Effect.flip);
+        assert.strictEqual(error.reason, "invalid-response");
+        assert.strictEqual(execute.mock.calls.length, 2);
+      }).pipe(Effect.provide(layer));
+    },
+  );
+}
 it.effect("decodes the viewer and isolates credentials for identical paths on two hosts", () => {
   const { layer, execute } = harness((request) =>
     Response.json({

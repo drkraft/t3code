@@ -135,10 +135,12 @@ export const make = Effect.gen(function* () {
           ...(retryAt === undefined ? {} : { retryAt }),
         });
       }
-      const body = yield* collectUint8StreamText({
-        stream: response.stream,
-        maxBytes: 8 * 1024 * 1024,
-      }).pipe(Effect.mapError(() => fail("failed", "The Forgejo response could not be read.")));
+      const body = yield* response.status === 204
+        ? Effect.succeed({ text: "", truncated: false, invalidUtf8: false })
+        : collectUint8StreamText({
+            stream: response.stream,
+            maxBytes: 8 * 1024 * 1024,
+          }).pipe(Effect.mapError(() => fail("failed", "The Forgejo response could not be read.")));
       if (!raw && (body.truncated || body.invalidUtf8))
         return yield* fail(
           "invalid-response",
@@ -159,7 +161,17 @@ export const make = Effect.gen(function* () {
       ),
     );
   const request: ForgejoApi["Service"]["request"] = (input) =>
-    send(input).pipe(Effect.flatMap((response) => decode(input.schema, response.text)));
+    send(input).pipe(
+      Effect.flatMap((response) =>
+        response.text === ""
+          ? Schema.decodeUnknownEffect(input.schema)(undefined).pipe(
+              Effect.mapError(() =>
+                fail("invalid-response", "Forgejo returned an unexpected empty response."),
+              ),
+            )
+          : decode(input.schema, response.text),
+      ),
+    );
   const page: ForgejoApi["Service"]["page"] = (input) =>
     Effect.gen(function* () {
       const response = yield* send({ ...input, method: "GET" });

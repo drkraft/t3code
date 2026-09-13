@@ -8,28 +8,52 @@ import { pullRequestFixture as pr } from "./forgejoPullRequestTestHarness.ts";
 
 const input = { cwd: "/repo", host: "forge.example", repository: "team/repo", number: 1 };
 it.effect(
-  "reads detail with current-head checks while keeping unimplemented writes unavailable",
+  "reads detail with current-head checks and advertises review writes without U6 actions",
   () => {
     const { layer, requests } = harness((request) =>
-      request.url.includes("/statuses/")
-        ? Response.json([])
-        : request.url.includes("/actions/runs")
-          ? Response.json({ total_count: 0, workflow_runs: [] })
-          : Response.json(pr),
+      request.url.endsWith("/user")
+        ? Response.json({ id: 7, login: "reviewer" })
+        : request.url.endsWith("/repos/team/repo")
+          ? Response.json({
+              archived: false,
+              has_pull_requests: true,
+              permissions: { pull: true, push: true, admin: false },
+            })
+          : request.url.includes("/reviews?")
+            ? Response.json([
+                { state: "REQUEST_REVIEW", user: { id: 3, login: "carol" }, team: null },
+              ])
+            : request.url.includes("/statuses/")
+              ? Response.json([])
+              : request.url.includes("/actions/runs")
+                ? Response.json({ total_count: 0, workflow_runs: [] })
+                : Response.json({
+                    ...pr,
+                    is_locked: false,
+                    requested_reviewers_teams: [{ id: 9, name: "maintainers" }],
+                  }),
     );
     return Effect.gen(function* () {
       const provider = yield* Provider.make;
       const detail = yield* provider.getChangeRequest(input);
       assert.strictEqual(detail.body, "Description");
       assert.strictEqual(detail.changedFiles, 1);
+      assert.deepStrictEqual(
+        detail.reviewers.map((reviewer) => reviewer.login),
+        ["carol"],
+      );
       assert.isTrue(requests.some((request) => request.url.includes("/statuses/new-head")));
       assert.deepStrictEqual(detail.viewerPermissions.actions, []);
       assert.deepStrictEqual(provider.capabilities.actions, []);
-      assert.isFalse(provider.capabilities.comment);
-      assert.strictEqual(
-        (yield* provider.comment({ ...input, body: "Do not send" }).pipe(Effect.flip)).reason,
-        "failed",
-      );
+      assert.isTrue(provider.capabilities.comment);
+      assert.isTrue(provider.capabilities.review.inlineComment);
+      assert.isTrue(provider.capabilities.review.reply);
+      assert.isFalse(provider.capabilities.review.resolve);
+      assert.deepStrictEqual(provider.capabilities.review.verdicts, [
+        "comment",
+        "approve",
+        "request-changes",
+      ]);
       assert.isTrue(requests.every((request) => request.method === "GET"));
     }).pipe(Effect.provide(layer));
   },

@@ -43,6 +43,16 @@ export const PullRequest = Schema.Struct({
   closed_at: Schema.NullOr(Schema.String),
   merged_at: Schema.NullOr(Schema.String),
   requested_reviewers: Schema.NullOr(Schema.Array(Actor)),
+  requested_reviewers_teams: Schema.optional(
+    Schema.NullOr(
+      Schema.Array(
+        Schema.Struct({
+          id: Schema.Int,
+          name: Schema.NonEmptyString,
+        }),
+      ),
+    ),
+  ),
   labels: Schema.NullOr(
     Schema.Array(Schema.Struct({ name: Schema.NonEmptyString, color: Schema.String })),
   ),

@@ -1025,6 +1025,8 @@ export type PullRequestReviewPosition = typeof PullRequestReviewPosition.Type;
 /** One remark in a review that has not been sent yet, anchored to a line of the diff. */
 export const PullRequestReviewCommentDraft = Schema.Struct({
   path: TrimmedNonEmptyString,
+  /** Revisions displayed when this line was selected, retained across diff refreshes. */
+  snapshot: Schema.optional(PullRequestDiffSnapshot),
   /**
    * What the file was called before the change, sent only when it differs. GitLab resolves a
    * position against both sides of the diff, so a comment on a renamed file needs both names;

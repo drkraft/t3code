@@ -7,9 +7,21 @@ import {
   PullRequestListInput,
   PullRequestListResult,
   PullRequestReviewerRequestInput,
+  PullRequestReviewCommentDraft,
   pullRequestHostOf,
   resolvePullRequestAuthorFilter,
 } from "./pullRequest.ts";
+
+it("preserves the displayed diff revisions through review draft decoding", () => {
+  const snapshot = { baseSha: "a".repeat(40), headSha: "b".repeat(40) };
+  const input = {
+    path: "file.ts",
+    position: { kind: "deleted", oldLine: 3 },
+    body: "Review",
+    snapshot,
+  };
+  expect(Schema.decodeUnknownSync(PullRequestReviewCommentDraft)(input)).toEqual(input);
+});
 
 describe("pullRequestHostOf", () => {
   it.each([

@@ -1,31 +1,33 @@
 import { Effect } from "effect";
-import type { PullRequestCapabilities, PullRequestViewerPermissions } from "@t3tools/contracts";
+import type { PullRequestCapabilities } from "@t3tools/contracts";
 import * as Api from "../sourceControl/ForgejoApi.ts";
 import * as Repository from "../sourceControl/forgejoRepository.ts";
 import * as Activity from "./ForgejoPullRequestActivity.ts";
 import * as Diff from "./ForgejoPullRequestDiff.ts";
 import * as Checks from "./ForgejoPullRequestChecks.ts";
 import * as Listing from "./ForgejoPullRequestListing.ts";
+import * as Review from "./ForgejoPullRequestReview.ts";
+import * as Metadata from "./ForgejoPullRequestMetadata.ts";
+import * as Permissions from "./ForgejoPullRequestPermissions.ts";
 import { PullRequest, actor, repositoryPath, toChangeRequest } from "./forgejoPullRequestJson.ts";
 import { PullRequestProviderError, type PullRequestProviderApi } from "./PullRequestProvider.ts";
 
 const CAPABILITIES: PullRequestCapabilities = {
   diff: true,
   search: true,
-  comment: false,
+  comment: true,
   actions: [],
   mergeMethods: [],
-  reactions: false,
-  review: { inlineComment: false, reply: false, resolve: false, verdicts: [] },
-  reviewers: { request: false, listCandidates: false },
-  edit: { changeRequest: false, comment: false },
-};
-const PERMISSIONS: PullRequestViewerPermissions = {
-  actions: [],
-  comment: false,
-  resolve: false,
-  verdicts: [],
-  requestReviewers: false,
+  reactions: true,
+  review: {
+    inlineComment: true,
+    reply: true,
+    resolve: false,
+    verdicts: ["comment", "approve", "request-changes"],
+  },
+  reviewers: { request: true, listCandidates: true },
+  edit: { changeRequest: true, comment: true },
+  labels: true,
 };
 export const forgejoProviderFailure = (error: Api.ForgejoApiError) => ({
   reason:
@@ -59,6 +61,9 @@ export const make = Effect.gen(function* () {
   const diff = yield* Diff.make;
   const checks = yield* Checks.make;
   const list = yield* Listing.make;
+  const review = yield* Review.make;
+  const metadata = yield* Metadata.make;
+  const permissions = yield* Permissions.make;
   const get = Effect.fn("ForgejoPullRequestProvider.get")(function* (input: {
     readonly host: string;
     readonly repository: string;
@@ -97,20 +102,32 @@ export const make = Effect.gen(function* () {
       const statuses = yield* checks({ ...input, sha: pr.head.sha }).pipe(
         Effect.mapError(fail("getChangeRequest")),
       );
+      const requested = yield* metadata
+        .listRequestedReviewers(input)
+        .pipe(Effect.mapError(fail("getChangeRequest")));
       return {
         ...toChangeRequest(pr),
         body: pr.body,
         changedFiles: pr.changed_files,
         closedAt: pr.closed_at,
         mergedAt: pr.merged_at,
-        reviewers: (pr.requested_reviewers ?? []).flatMap((user) => {
-          const value = actor(user);
-          return value ? [value] : [];
-        }),
+        reviewers: [
+          ...requested.users.flatMap((user) => {
+            const value = actor(user);
+            return value ? [value] : [];
+          }),
+          ...requested.teams.map((team) => ({
+            login: team.name,
+            name: team.name,
+            avatarUrl: null,
+          })),
+        ],
         checks: statuses,
         checksState: Checks.checksState(statuses),
         mergeCapabilities: { merge: false, squash: false, rebase: false },
-        viewerPermissions: PERMISSIONS,
+        viewerPermissions: yield* permissions
+          .getViewerPermissions(input, pr)
+          .pipe(Effect.mapError(fail("getChangeRequest"))),
       };
     }),
     getChangeRequestSummary: (input) =>
@@ -122,17 +139,28 @@ export const make = Effect.gen(function* () {
       activity
         .getChangeRequestActivity(input)
         .pipe(Effect.mapError(fail("getChangeRequestActivity"))),
-    getViewerPermissions: () => Effect.succeed(PERMISSIONS),
+    getViewerPermissions: (input) =>
+      permissions.getViewerPermissions(input).pipe(Effect.mapError(fail("getViewerPermissions"))),
     getDiff: (input) => diff.getDiff(input).pipe(Effect.mapError(fail("getDiff"))),
     getDiffFileContents: (input) =>
       diff.getDiffFileContents(input).pipe(Effect.mapError(fail("getDiffFileContents"))),
     runAction: () => unavailable("runAction"),
-    comment: () => unavailable("comment"),
-    submitReview: () => unavailable("submitReview"),
-    listReviewerCandidates: () => unavailable("listReviewerCandidates"),
-    setReviewerRequest: () => unavailable("setReviewerRequest"),
-    replyToThread: () => unavailable("replyToThread"),
-    setReaction: () => unavailable("setReaction"),
+    comment: (input) => review.comment(input).pipe(Effect.mapError(fail("comment"))),
+    updateChangeRequest: (input) =>
+      review.updateChangeRequest(input).pipe(Effect.mapError(fail("updateChangeRequest"))),
+    updateComment: (input) =>
+      review.updateComment(input).pipe(Effect.mapError(fail("updateComment"))),
+    submitReview: (input) => review.submitReview(input).pipe(Effect.mapError(fail("submitReview"))),
+    listReviewerCandidates: (input) =>
+      metadata.listReviewerCandidates(input).pipe(Effect.mapError(fail("listReviewerCandidates"))),
+    setReviewerRequest: (input) =>
+      metadata.setReviewerRequest(input).pipe(Effect.mapError(fail("setReviewerRequest"))),
+    listLabelCandidates: (input) =>
+      metadata.listLabelCandidates(input).pipe(Effect.mapError(fail("listLabelCandidates"))),
+    setLabels: (input) => metadata.setLabels(input).pipe(Effect.mapError(fail("setLabels"))),
+    replyToThread: (input) =>
+      review.replyToThread(input).pipe(Effect.mapError(fail("replyToThread"))),
+    setReaction: (input) => metadata.setReaction(input).pipe(Effect.mapError(fail("setReaction"))),
     setThreadResolution: () => unavailable("setThreadResolution"),
   };
   return provider;

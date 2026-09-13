@@ -141,6 +141,7 @@ interface MutableAnnotationGroup {
 
 interface DraftAnchor {
   readonly fileKey: string;
+  readonly snapshot: PullRequestDiffSnapshot | undefined;
   readonly path: string;
   /** What the file was called before the change, for the hosts that resolve a position by both. */
   readonly oldPath: string | null;
@@ -658,13 +659,14 @@ function PullRequestCodeTab({
       if (position === null) return;
       setDraft({
         fileKey: item.id,
+        snapshot: diffSnapshot,
         path,
         oldPath: previousPath === path ? null : previousPath,
         position,
         range,
       });
     },
-    [canCommentOnLines, files],
+    [canCommentOnLines, diffSnapshot, files],
   );
 
   // Built here because the parsed diff only lives here, and built by the same function the
@@ -934,6 +936,7 @@ function PullRequestCodeTab({
                 path: draft.path,
                 ...(draft.oldPath === null ? {} : { oldPath: draft.oldPath }),
                 position: draft.position,
+                ...(draft.snapshot ? { snapshot: draft.snapshot } : {}),
                 body,
               });
               setDraft(null);

@@ -40,6 +40,29 @@ const makeEnvironment = (
   DesktopEnvironment.DesktopEnvironment.pipe(Effect.provide(makeEnvironmentLayer(overrides, env)));
 
 describe("DesktopEnvironment", () => {
+  it("shows local fork identity while preserving development identity", () => {
+    const appVersion = "0.0.40-forgejo-local.20260913.g84c983b8b";
+    assert.equal(
+      DesktopEnvironment.resolveDesktopAppBranding({ isDevelopment: false, appVersion })
+        .displayName,
+      "T3 Code (Forgejo)",
+    );
+    assert.equal(
+      DesktopEnvironment.resolveDesktopAppBranding({ isDevelopment: true, appVersion }).displayName,
+      "T3 Code (Dev)",
+    );
+  });
+  it.effect("isolates the local fork profile only when a separate T3 home is selected", () =>
+    Effect.gen(function* () {
+      const input = { isPackaged: true, appVersion: "0.0.40-forgejo-local.20260913.g84c983b8b" };
+      const isolated = yield* makeEnvironment(input, { T3CODE_HOME: "/tmp/forgejo-qa" });
+      assert.equal(isolated.appDataDirectory, "/tmp/forgejo-qa/electron-profiles");
+      assert.equal(isolated.stateDir, "/tmp/forgejo-qa/userdata");
+      const shared = yield* makeEnvironment(input);
+      assert.equal(shared.appDataDirectory, "/Users/alice/Library/Application Support");
+      assert.equal(shared.stateDir, "/Users/alice/.t3/userdata");
+    }),
+  );
   it.effect("derives state paths and development identity inside Effect", () =>
     Effect.gen(function* () {
       const environment = yield* makeEnvironment(

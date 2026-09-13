@@ -10,6 +10,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import { isLocalForkVersion, LOCAL_FORK_PRODUCT_NAME } from "@t3tools/shared/localFork";
 
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopConfig from "./DesktopConfig.ts";
@@ -107,7 +108,10 @@ export function resolveDesktopAppBranding(input: {
   return {
     baseName: APP_BASE_NAME,
     stageLabel,
-    displayName: `${APP_BASE_NAME} (${stageLabel})`,
+    displayName:
+      !input.isDevelopment && isLocalForkVersion(input.appVersion)
+        ? LOCAL_FORK_PRODUCT_NAME
+        : `${APP_BASE_NAME} (${stageLabel})`,
   };
 }
 
@@ -198,7 +202,10 @@ const make = Effect.fn("desktop.environment.make")(function* (
     appPath: input.appPath,
     resourcesPath,
     homeDirectory,
-    appDataDirectory,
+    appDataDirectory:
+      isLocalForkVersion(input.appVersion) && Option.isSome(config.t3Home)
+        ? path.join(baseDir, "electron-profiles")
+        : appDataDirectory,
     baseDir,
     stateDir,
     desktopSettingsPath: path.join(stateDir, "desktop-settings.json"),

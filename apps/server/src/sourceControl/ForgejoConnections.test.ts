@@ -7,7 +7,7 @@ const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 const primary = {
   id: "primary",
-  apiUrl: "https://forge.example/forge/api/v1/",
+  apiUrl: "https://forge.example/api/v1/",
   gitHosts: ["ForgeSSH", "forge.example:2222"],
   tokenEnv: "FORGE_TOKEN",
 };
@@ -47,11 +47,11 @@ describe("ForgejoConnections", () => {
     }),
   );
 
-  it.effect("normalizes aliases and keeps the API instance subpath", () =>
+  it.effect("normalizes aliases and the root API URL", () =>
     Effect.gen(function* () {
       const service = yield* load(encodeJson([primary]));
       expect(service.resolve("git@FORGESSH:owner/repo.git")?.apiUrl).toBe(
-        "https://forge.example/forge/api/v1",
+        "https://forge.example/api/v1",
       );
       expect(service.resolve("https://forge.example/forge/owner/repo.git")?.id).toBe("primary");
     }),
@@ -140,6 +140,7 @@ describe("ForgejoConnections", () => {
   );
 
   it.effect.each([
+    encodeJson([{ ...primary, apiUrl: "https://forge.example/forgejo/api/v1" }]),
     "not-json",
     "{}",
     encodeJson([{ ...primary, tokenEnv: "BAD TOKEN" }]),

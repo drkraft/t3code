@@ -1,7 +1,10 @@
+import { ProjectId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   changeRequestUrlFor,
+  changeRequestRepositoryUrl,
+  matchesLinkedPullRequestUrl,
   parseChangeRequestUrl,
   pullRequestCandidateUrlFromReferenceAutolink,
   siblingPullRequestUrl,
@@ -138,5 +141,56 @@ describe("changeRequestUrlFor", () => {
       repository: "org/project/_git/web",
       number: 42,
     });
+  });
+});
+
+describe("Forgejo change request links", () => {
+  it.each([
+    "https://forgejo.drkraft.xyz",
+    "http://127.0.0.1:59349",
+    "https://code.example.test:8443",
+  ])("reads exact pulls routes on %s with their port", (origin) => {
+    expect(parseChangeRequestUrl(`${origin}/Team/Repo/pulls/42/files?x=1#review`)).toEqual({
+      host: new URL(origin).host,
+      repository: "team/repo",
+      number: 42,
+    });
+  });
+  it.each(["0", "-1", "9007199254740992", "abc", "12abc"])(
+    "rejects invalid PR number %s",
+    (number) => {
+      expect(
+        parseChangeRequestUrl(`https://code.example.test/team/repo/pulls/${number}`),
+      ).toBeNull();
+    },
+  );
+  it("builds the Forgejo route with an explicit port", () => {
+    expect(changeRequestUrlFor("forgejo", "code.example.test:8443", "team/repo", 42)).toBe(
+      "https://code.example.test:8443/team/repo/pulls/42",
+    );
+  });
+  it("extracts the repository root without losing origin or casing", () => {
+    expect(
+      changeRequestRepositoryUrl("http://localhost:3000/Team/Repo/pulls/42/files?x=1#review"),
+    ).toBe("http://localhost:3000/Team/Repo");
+  });
+  it("builds a sibling and removes review-specific state", () => {
+    expect(
+      siblingPullRequestUrl("http://localhost:3000/team/repo/pulls/42/files?x=1#review", 43),
+    ).toBe("http://localhost:3000/team/repo/pulls/43");
+  });
+  it("does not conflate local Forgejo instances on different ports", () => {
+    const linked = {
+      projectId: ProjectId.make("project-1"),
+      repository: "team/repo",
+      number: 42,
+      url: "http://localhost:3000/team/repo/pulls/42",
+    };
+    expect(matchesLinkedPullRequestUrl(linked, "http://localhost:3001/team/repo/pulls/42")).toBe(
+      false,
+    );
+    expect(
+      matchesLinkedPullRequestUrl(linked, "http://localhost:3000/Team/Repo/pulls/42/files"),
+    ).toBe(true);
   });
 });

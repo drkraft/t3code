@@ -46,6 +46,9 @@ variables.
 
 ### Forgejo connection setup
 
+Forgejo instances must be hosted at the root of their domain (for example `https://forge.example`).
+Instances under a path such as `https://example.com/forgejo` are not supported.
+
 Configure instances on the machine running the server. Each connection names an API URL,
 Git hosts or SSH aliases, and the environment variable containing its token:
 

@@ -55,7 +55,7 @@ const ConnectionConfig = Schema.Struct({
         !url.password &&
         !url.search &&
         !url.hash &&
-        /\/api\/v1\/?$/u.test(url.pathname) &&
+        /^\/api\/v1\/?$/u.test(url.pathname) &&
         !/[\s\\]/u.test(value)
       );
     }),

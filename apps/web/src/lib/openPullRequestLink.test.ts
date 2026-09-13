@@ -10,7 +10,8 @@ import {
   pullRequestCandidateUrlFromReferenceAutolink,
   shouldOpenPullRequestExternally,
 } from "./openPullRequestLink";
-import { ProjectId, type RepositoryIdentity } from "@t3tools/contracts";
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import { EnvironmentId, ProjectId, type RepositoryIdentity } from "@t3tools/contracts";
 
 function repositoryIdentity(
   provider: string,
@@ -430,5 +431,45 @@ describe("findProjectForChangeRequest", () => {
         number: 1,
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("Forgejo link routing", () => {
+  const checkout: EnvironmentProject = {
+    id: ProjectId.make("forgejo-project"),
+    environmentId: EnvironmentId.make("environment-1"),
+    title: "Forgejo",
+    workspaceRoot: "/fixture",
+    defaultModelSelection: null,
+    scripts: [],
+    createdAt: "2026-09-13T00:00:00Z",
+    updatedAt: "2026-09-13T00:00:00Z",
+    repositoryIdentity: {
+      ...repositoryIdentity(
+        "forgejo",
+        "code.example:8443/team/app",
+        "https://code.example:8443/team/app.git",
+      ),
+      owner: "team",
+      name: "app",
+      displayName: "team/app",
+    },
+  };
+  it("routes a configured Forgejo URL and borrows its project for another repository", () => {
+    const own = parseChangeRequestUrl("https://code.example:8443/team/app/pulls/7");
+    const other = parseChangeRequestUrl("https://code.example:8443/team/backend/pulls/7");
+    expect(own).not.toBeNull();
+    expect(other).not.toBeNull();
+    if (!own || !other) return;
+    expect(findProjectForChangeRequest([checkout], own)).toBe(checkout);
+    expect(findProjectForChangeRequest([checkout], other)).toBeUndefined();
+    expect(findProjectOnChangeRequestHost([checkout], other)).toBe(checkout);
+  });
+  it("leaves an unconfigured instance or a different port as an external link", () => {
+    for (const host of ["other.example:8443", "code.example:9443", "code.example"]) {
+      expect(
+        findProjectOnChangeRequestHost([checkout], { host, repository: "team/app", number: 7 }),
+      ).toBeUndefined();
+    }
   });
 });

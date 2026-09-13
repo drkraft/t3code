@@ -9,14 +9,14 @@ import {
 } from "./sourceControl.ts";
 
 describe("source control presentation", () => {
-  it("uses the generic pull request icon for a configured Forgejo provider", () => {
+  it("uses the Forgejo icon for a configured Forgejo provider", () => {
     expect(
       resolveChangeRequestPresentation({
         kind: "forgejo",
         name: "Forgejo",
         baseUrl: "https://forge.example.test",
       }).icon,
-    ).toBe("change-request");
+    ).toBe("forgejo");
   });
 
   it("uses merge request terminology for GitLab", () => {

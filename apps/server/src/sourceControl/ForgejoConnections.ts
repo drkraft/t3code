@@ -1,4 +1,11 @@
-import { Config, Context, Effect, Layer, Option, Redacted, Schema } from "effect";
+import {
+  ForgejoConnectionMetadata,
+  normalizeForgejoAuthority,
+  validateForgejoConnectionAuthorities,
+} from "@t3tools/contracts";
+import { Config, ConfigProvider, Context, Effect, Layer, Option, Redacted, Schema } from "effect";
+
+import { ServerConfig } from "../config.ts";
 
 export interface ForgejoConnection {
   readonly id: string;
@@ -13,20 +20,6 @@ export class ForgejoConnectionsConfigError extends Schema.TaggedError<ForgejoCon
   { message: Schema.String },
 ) {}
 
-function authority(value: string): string | null {
-  const url = URL.parse(`ssh://${value}`);
-  return url &&
-    url.hostname &&
-    !url.username &&
-    !url.password &&
-    !url.search &&
-    !url.hash &&
-    (url.pathname === "" || url.pathname === "/") &&
-    !/[\s/\\]/u.test(value)
-    ? url.host.toLowerCase()
-    : null;
-}
-
 function remoteAuthority(value: string): string | null {
   if (value.includes("://")) {
     const url = URL.parse(value);
@@ -40,31 +33,12 @@ function remoteAuthority(value: string): string | null {
       : null;
   }
   const scpAuthority = /^[^@/\s]+@(\[[^\]]+\]|[^:/\s]+):.+$/u.exec(value)?.[1];
-  return authority(scpAuthority ?? value);
+  return normalizeForgejoAuthority(scpAuthority ?? value);
 }
 
 const ConnectionConfig = Schema.Struct({
-  id: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
-  apiUrl: Schema.String.check(
-    Schema.makeFilter((value) => {
-      const url = URL.parse(value);
-      return (
-        url !== null &&
-        (url.protocol === "https:" || url.protocol === "http:") &&
-        !url.username &&
-        !url.password &&
-        !url.search &&
-        !url.hash &&
-        /^\/api\/v1\/?$/u.test(url.pathname) &&
-        !/[\s\\]/u.test(value)
-      );
-    }),
-  ),
-  gitHosts: Schema.Array(
-    Schema.String.check(Schema.makeFilter((value) => authority(value) !== null)),
-  ),
+  ...ForgejoConnectionMetadata.fields,
   tokenEnv: Schema.String.check(Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/u)),
-  wipPrefixes: Schema.optional(Schema.Array(Schema.String.check(Schema.isPattern(/\S/u)))),
 });
 
 const decodeConnections = Schema.decodeEffect(
@@ -73,7 +47,7 @@ const decodeConnections = Schema.decodeEffect(
 
 export const make = Effect.gen(function* () {
   const raw = yield* Config.string("T3CODE_FORGEJO_CONNECTIONS").pipe(
-    Config.withDefault("[]"),
+    Config.option,
     Effect.mapError(
       () =>
         new ForgejoConnectionsConfigError({
@@ -81,50 +55,67 @@ export const make = Effect.gen(function* () {
         }),
     ),
   );
-  const configs = yield* decodeConnections(raw).pipe(
+  const provider = yield* ConfigProvider.ConfigProvider;
+  // Environment providers omit empty scalar values but retain their child keys.
+  const parent = yield* provider.load(["T3CODE", "FORGEJO"]).pipe(
     Effect.mapError(
       () =>
         new ForgejoConnectionsConfigError({
-          message: "Invalid T3CODE_FORGEJO_CONNECTIONS configuration.",
+          message: "Cannot read Forgejo connection configuration.",
         }),
     ),
   );
+  const hasExternal =
+    Option.isSome(raw) || (parent?._tag === "Record" && parent.keys.has("CONNECTIONS"));
+  const serverConfig = yield* Effect.serviceOption(ServerConfig);
+  const configs = hasExternal
+    ? yield* decodeConnections(Option.getOrElse(raw, () => "")).pipe(
+        Effect.mapError(
+          () =>
+            new ForgejoConnectionsConfigError({
+              message: "Invalid T3CODE_FORGEJO_CONNECTIONS configuration.",
+            }),
+        ),
+        Effect.flatMap((configs) =>
+          Effect.forEach(configs, (config) =>
+            Config.redacted(config.tokenEnv).pipe(
+              Config.option,
+              Effect.mapError(
+                () =>
+                  new ForgejoConnectionsConfigError({
+                    message: "Cannot read Forgejo credential configuration.",
+                  }),
+              ),
+              Effect.map((token) => ({ ...config, token })),
+            ),
+          ),
+        ),
+      )
+    : (Option.getOrUndefined(serverConfig)?.forgejoConnections ?? []).map((config) => ({
+        ...config,
+        token: Option.some(Redacted.make(config.token)),
+      }));
   const byAuthority = new Map<string, ForgejoConnection>();
-  const ids = new Set<string>();
+  const validation = validateForgejoConnectionAuthorities(configs);
+  if (validation !== true) {
+    return yield* new ForgejoConnectionsConfigError({ message: validation });
+  }
   const connections: ForgejoConnection[] = [];
   for (const config of configs) {
-    if (ids.has(config.id)) {
-      return yield* new ForgejoConnectionsConfigError({
-        message: "Duplicate Forgejo connection id.",
-      });
-    }
-    ids.add(config.id);
     const apiAuthority = remoteAuthority(config.apiUrl);
     const apiUrl = new URL(config.apiUrl);
-    const hosts = new Set(config.gitHosts.map((host) => authority(host) ?? host.toLowerCase()));
-    if (apiAuthority) hosts.add(apiAuthority);
-    const token = yield* Config.redacted(config.tokenEnv).pipe(
-      Config.option,
-      Effect.mapError(
-        () =>
-          new ForgejoConnectionsConfigError({
-            message: "Cannot read Forgejo credential configuration.",
-          }),
-      ),
+    const hosts = new Set(
+      config.gitHosts.map((host) => normalizeForgejoAuthority(host) ?? host.toLowerCase()),
     );
+    if (apiAuthority) hosts.add(apiAuthority);
     const connection: ForgejoConnection = {
       id: config.id,
       apiUrl: apiUrl.href.replace(/\/$/u, ""),
       gitHosts: [...hosts],
       ...(config.wipPrefixes === undefined ? {} : { wipPrefixes: config.wipPrefixes }),
-      token: Option.filter(token, (value) => Redacted.value(value).trim() !== ""),
+      token: Option.filter(config.token, (value) => Redacted.value(value).trim() !== ""),
     };
     for (const host of hosts) {
-      if (byAuthority.has(host)) {
-        return yield* new ForgejoConnectionsConfigError({
-          message: "Forgejo connections share an ambiguous Git authority.",
-        });
-      }
       byAuthority.set(host, connection);
     }
     connections.push(connection);

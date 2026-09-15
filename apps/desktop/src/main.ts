@@ -52,6 +52,7 @@ import * as DesktopServerExposure from "./backend/DesktopServerExposure.ts";
 import * as DesktopClientSettings from "./settings/DesktopClientSettings.ts";
 import * as DesktopSavedEnvironments from "./settings/DesktopSavedEnvironments.ts";
 import * as DesktopSnapShot from "./snapShot/DesktopSnapShot.ts";
+import * as DesktopForgejoConnections from "./settings/DesktopForgejoConnections.ts";
 import * as DesktopAppSettings from "./settings/DesktopAppSettings.ts";
 import * as DesktopPreReadyPlatform from "./app/DesktopPreReadyPlatform.ts";
 import * as DesktopShellEnvironment from "./shell/DesktopShellEnvironment.ts";
@@ -138,6 +139,7 @@ const desktopFoundationLayer = Layer.mergeAll(
   DesktopState.layer,
   DesktopShutdown.layer,
   DesktopAppSettings.layer,
+  DesktopForgejoConnections.layer.pipe(Layer.provide(ElectronSafeStorage.layerAsync)),
   DesktopClientSettings.layer,
   DesktopConnectionCatalogStore.layer.pipe(Layer.provideMerge(DesktopSavedEnvironments.layer)),
   DesktopAssets.layer,

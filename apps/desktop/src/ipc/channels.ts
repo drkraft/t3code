@@ -109,3 +109,6 @@ export const PREVIEW_POINTER_EVENT_CHANNEL = "desktop:preview-pointer-event";
 export const MAC_PERMISSION_HELPER_CHANNEL = "desktop:mac-permission-helper";
 
 export const CHECK_SYSTEM_PERMISSION_CHANNEL = "desktop:check-system-permission";
+export const GET_FORGEJO_CONFIGURATION_CHANNEL = "desktop:get-forgejo-configuration";
+export const SAVE_FORGEJO_CONNECTION_CHANNEL = "desktop:save-forgejo-connection";
+export const REMOVE_FORGEJO_CONNECTION_CHANNEL = "desktop:remove-forgejo-connection";

@@ -6,6 +6,7 @@
  *
  * @module ServerConfig
  */
+import type { ForgejoBootstrapConnection } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -82,6 +83,7 @@ export class ServerConfig extends Context.Service<
     readonly devAllowedOrigins: ReadonlyArray<string>;
     readonly noBrowser: boolean;
     readonly startupPresentation: StartupPresentation;
+    readonly forgejoConnections?: readonly ForgejoBootstrapConnection[];
     readonly desktopBootstrapToken: string | undefined;
     readonly desktopTelemetryFd?: number | undefined;
     readonly desktopTelemetryControlFd?: number | undefined;

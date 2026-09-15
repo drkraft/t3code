@@ -555,8 +555,17 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/source-control",
     scope: "environment-defaults",
     searchTerms: [
-      "version control git github gitlab bitbucket azure devops hosting integrations credentials scan server environment",
+      "version control git github gitlab forgejo bitbucket azure devops hosting integrations credentials scan server environment",
     ],
+  },
+  {
+    id: "forgejo-connections",
+    title: "Forgejo connections",
+    to: "/settings/source-control",
+    desktopOnly: true,
+    environmentOnly: true,
+    scope: "environment-defaults",
+    searchTerms: ["forgejo instance api token encrypted mac keychain aliases wip restart"],
   },
   {
     id: "git-fetch-interval",

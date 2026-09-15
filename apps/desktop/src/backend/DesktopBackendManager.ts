@@ -147,7 +147,6 @@ export class BackendProcessBootstrapEncodeError extends Schema.TaggedError<Backe
   "BackendProcessBootstrapEncodeError",
   {
     ...backendProcessContextSchema,
-    cause: Schema.Defect(),
   },
 ) {
   override get message(): string {
@@ -443,13 +442,12 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const bootstrapJson = yield* encodeBootstrapJson(options.bootstrap).pipe(
     Effect.mapError(
-      (cause) =>
+      () =>
         new BackendProcessBootstrapEncodeError({
           executablePath: options.executablePath,
           entryPath: options.entryPath,
           cwd: options.cwd,
           httpBaseUrl: options.httpBaseUrl,
-          cause,
         }),
     ),
   );

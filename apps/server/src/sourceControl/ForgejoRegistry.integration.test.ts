@@ -1,3 +1,4 @@
+import type { ForgejoBootstrapConnection } from "@t3tools/contracts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off - The registry is exercised against an independent real HTTP peer.
 import * as NodeHttp from "node:http";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -78,6 +79,7 @@ const makeRegistry = Effect.fn("ForgejoRegistryTest.makeRegistry")(function* (
     gitHosts: readonly string[];
     tokenEnv: string;
   }[],
+  bootstrapConnections?: readonly ForgejoBootstrapConnection[],
 ) {
   const driver = yield* VcsDriver.VcsDriver.pipe(
     Effect.provide(
@@ -103,6 +105,13 @@ const makeRegistry = Effect.fn("ForgejoRegistryTest.makeRegistry")(function* (
             freshness,
           }),
       }),
+    ),
+  );
+  const config = yield* ServerConfig.ServerConfig.pipe(
+    Effect.provide(
+      ServerConfig.layerTest(process.cwd(), { prefix: "t3-forgejo-registry-" }).pipe(
+        Layer.provide(NodeServices.layer),
+      ),
     ),
   );
   return yield* SourceControlProviderRegistry.make.pipe(
@@ -133,13 +142,18 @@ const makeRegistry = Effect.fn("ForgejoRegistryTest.makeRegistry")(function* (
         Layer.mock(GitHubCli.GitHubCli)({}),
         Layer.mock(GitLabCli.GitLabCli)({}),
         NodeServices.layer,
-        ServerConfig.layerTest(process.cwd(), { prefix: "t3-forgejo-registry-" }).pipe(
-          Layer.provide(NodeServices.layer),
-        ),
+        ServerConfig.layer({
+          ...config,
+          ...(bootstrapConnections === undefined
+            ? {}
+            : { forgejoConnections: bootstrapConnections }),
+        }),
         ConfigProvider.layer(
           ConfigProvider.fromEnv({
             env: {
-              T3CODE_FORGEJO_CONNECTIONS: encodeJson(connections),
+              ...(bootstrapConnections === undefined
+                ? { T3CODE_FORGEJO_CONNECTIONS: encodeJson(connections) }
+                : {}),
               FIRST_TOKEN: "first-test-token",
               SECOND_TOKEN: "second-test-token",
             },
@@ -200,5 +214,28 @@ it.effect("rejects an unconfigured repository host before contacting a configure
     assert.equal(error.provider, "forgejo");
     assert.equal(error.operation, "getRepositoryCloneUrls");
     assert.deepEqual(peer.requests, []);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("authenticates real registry API requests with the private bootstrap token", () =>
+  Effect.gen(function* () {
+    const peer = yield* startPeer("bootstrap-trunk");
+    const registry = yield* makeRegistry(
+      [],
+      [
+        {
+          id: "local",
+          apiUrl: peer.apiUrl,
+          gitHosts: ["first-ssh:2222"],
+          token: "private-bootstrap-token",
+        },
+      ],
+    );
+    const provider = yield* registry.resolve({ cwd: "/first" });
+    const branch = yield* provider.getDefaultBranch({ cwd: "/first" });
+    assert.equal(branch, "bootstrap-trunk");
+    assert.deepEqual(peer.requests, [
+      { path: "/api/v1/repos/team/project", authorization: "token private-bootstrap-token" },
+    ]);
   }).pipe(Effect.scoped),
 );

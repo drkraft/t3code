@@ -301,6 +301,14 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           t3Home: "/tmp/t3-bootstrap-home",
           noBrowser: true,
           desktopBootstrapToken: "desktop-token",
+          forgejoConnections: [
+            {
+              id: "local",
+              apiUrl: "https://local.example/api/v1",
+              gitHosts: [],
+              token: "bootstrap-secret",
+            },
+          ],
           desktopTelemetryFd: 4,
           desktopTelemetryControlFd: 5,
           tailscaleServeEnabled: false,
@@ -358,6 +366,14 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         noBrowser: true,
         startupPresentation: "browser",
         desktopBootstrapToken: "desktop-token",
+        forgejoConnections: [
+          {
+            id: "local",
+            apiUrl: "https://local.example/api/v1",
+            gitHosts: [],
+            token: "bootstrap-secret",
+          },
+        ],
         desktopTelemetryFd: 4,
         desktopTelemetryControlFd: 5,
         resourceMonitorPath: undefined,

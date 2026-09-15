@@ -1,6 +1,6 @@
 # Source control
 
-T3 Code integrates with GitHub, GitLab, Bitbucket, and Azure DevOps to clone and publish
+T3 Code integrates with GitHub, GitLab, Forgejo, Bitbucket, and Azure DevOps to clone and publish
 repositories, create pull requests, and review changes.
 
 ## Connect an account
@@ -49,7 +49,26 @@ variables.
 Forgejo instances must be hosted at the root of their domain (for example `https://forge.example`).
 Instances under a path such as `https://example.com/forgejo` are not supported.
 
-Configure instances on the machine running the server. Each connection names an API URL,
+On macOS desktop, select the built-in local environment in **Settings → Source Control**, then
+use **Add Forgejo connection**. Enter an instance root URL, a unique connection ID and an API
+token. Advanced options accept additional Git hosts or SSH aliases and the instance’s WIP prefixes.
+The token is encrypted using macOS native storage; macOS may ask for keychain access. The form
+never reveals a saved token. When editing, leave the token blank to keep it; changing the instance
+host requires a replacement token.
+
+Save, then quit and reopen T3 Code to apply changes. Saving never restarts the server. You can
+subsequently launch the app from the Dock or Spotlight without a Terminal launcher. Check account
+authentication in **Source Control Providers** after reopening; **Rescan** checks the running
+configuration without applying pending changes. Replace the token if authentication fails. Removing
+a connection also takes effect after reopening and does not revoke its token on Forgejo.
+
+This editor is available only for the selected built-in Mac environment, not project scopes or
+remote servers. Web and mobile clients use their server’s configuration. If
+`T3CODE_FORGEJO_CONNECTIONS` is present, even as `[]`, it takes precedence over the saved
+configuration and the editor is read-only. There is no merging of the two configurations.
+
+For remote servers or environment-based setup, configure instances on the machine running the
+server. Each connection names an API URL,
 Git hosts or SSH aliases, and the environment variable containing its token:
 
 ```bash

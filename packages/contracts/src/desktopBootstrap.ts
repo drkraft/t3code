@@ -2,6 +2,8 @@ import * as Schema from "effect/Schema";
 
 import { PortSchema, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
+import { ForgejoBootstrapConnections } from "./forgejoConnections.ts";
+
 export const DesktopBackendBootstrap = Schema.Struct({
   mode: Schema.Literal("desktop"),
   noBrowser: Schema.Boolean,
@@ -12,6 +14,7 @@ export const DesktopBackendBootstrap = Schema.Struct({
   t3Home: Schema.optional(Schema.String),
   host: Schema.String,
   desktopBootstrapToken: Schema.String,
+  forgejoConnections: Schema.optionalKey(ForgejoBootstrapConnections),
   tailscaleServeEnabled: Schema.Boolean,
   tailscaleServePort: PortSchema,
   otlpTracesUrl: Schema.optional(Schema.String),

@@ -12,11 +12,12 @@ import { installBundle, restoreInstallation, LocalInstallError } from "./lib/loc
 import { readPreparedBundle, run, writeReceipt } from "./lib/local-mac-artifact.ts";
 
 const HELP = `Local Mac fork (Apple Silicon, Node 24, vp):
-  node scripts/local-mac.ts prepare --output-dir /absolute/new/build-directory
+  node scripts/local-mac.ts prepare --output-dir /absolute/new/build-directory [--signing-identity name-or-SHA1]
   node scripts/local-mac.ts install --receipt /path/local-mac-receipt.json --backup /absolute/new/backup
   node scripts/local-mac.ts restore --backup /path/to/previous/backup
 
 prepare builds the current clean checkout; it never fetches or merges upstream.
+--signing-identity selects an existing local code-signing certificate; otherwise signing is ad-hoc.
 install/restore require T3 and its server to be stopped and never launch or kill apps.
 Default data: ~/.t3; application: ~/Applications/T3 Code (Forgejo).app.
 For isolated QA only: --home /tmp/... --applications-dir /tmp/...
@@ -31,6 +32,7 @@ function main() {
     options: {
       help: { type: "boolean", short: "h" },
       "output-dir": { type: "string" },
+      "signing-identity": { type: "string" },
       receipt: { type: "string" },
       backup: { type: "string" },
       home: { type: "string" },
@@ -66,6 +68,11 @@ function main() {
   };
   switch (positionals[0]) {
     case "prepare": {
+      const signingIdentity = values["signing-identity"]?.trim();
+      if (values["signing-identity"] !== undefined && !signingIdentity)
+        throw new LocalInstallError(
+          "--signing-identity must name an existing code-signing identity.",
+        );
       const repo = NodePath.resolve(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)), "..");
       process.chdir(repo);
       if (run("git", ["status", "--porcelain"]))
@@ -101,6 +108,8 @@ function main() {
         true,
       );
       process.env.T3CODE_DESKTOP_SIGNED = "false";
+      if (signingIdentity) process.env.T3CODE_LOCAL_MAC_SIGNING_IDENTITY = signingIdentity;
+      else delete process.env.T3CODE_LOCAL_MAC_SIGNING_IDENTITY;
       process.env.T3CODE_DESKTOP_SKIP_BUILD = "false";
       process.env.T3CODE_DESKTOP_MOCK_UPDATES = "false";
       const sdk = run("/usr/bin/xcrun", ["--show-sdk-path"]);

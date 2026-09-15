@@ -377,6 +377,9 @@ export const resolveServerConfig = (
       noBrowser,
       startupPresentation,
       desktopBootstrapToken,
+      ...(bootstrap?.forgejoConnections === undefined
+        ? {}
+        : { forgejoConnections: bootstrap.forgejoConnections }),
       desktopTelemetryFd,
       desktopTelemetryControlFd,
       resourceMonitorPath,

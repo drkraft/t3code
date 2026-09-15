@@ -1,3 +1,5 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as ServerConfig from "../config.ts";
 import { describe, expect, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Layer, Option, Redacted, Schema } from "effect";
 
@@ -27,6 +29,52 @@ const load = (raw?: string, extraEnv: Record<string, string> = {}) =>
   Effect.service(ForgejoConnections).pipe(Effect.provide(connectionLayer(raw, extraEnv)));
 
 describe("ForgejoConnections", () => {
+  it.effect.each([undefined, "[]", encodeJson([primary]), "not-json", ""])(
+    "honors external configuration before bootstrap connections (%#)",
+    (raw) =>
+      Effect.gen(function* () {
+        const config = yield* ServerConfig.ServerConfig;
+        const result = yield* load(raw).pipe(
+          Effect.provideService(ServerConfig.ServerConfig, {
+            ...config,
+            forgejoConnections: [
+              {
+                id: "local",
+                apiUrl: "https://local.example/api/v1",
+                gitHosts: [],
+                token: "bootstrap-secret",
+              },
+            ],
+          }),
+          Effect.result,
+        );
+        if (raw === "not-json" || raw === "") {
+          expect(result._tag).toBe("Failure");
+        } else {
+          expect(result._tag).toBe("Success");
+          if (result._tag === "Success") {
+            expect(result.success.connections.map((connection) => connection.id)).toEqual(
+              raw === undefined ? ["local"] : raw === "[]" ? [] : ["primary"],
+            );
+            expect(encodeJson(result.success.connections)).not.toContain("bootstrap-secret");
+            if (raw === undefined)
+              expect(
+                Option.map(
+                  result.success.resolve("local.example")?.token ?? Option.none(),
+                  Redacted.value,
+                ),
+              ).toEqual(Option.some("bootstrap-secret"));
+          }
+        }
+      }).pipe(
+        Effect.provide(
+          ServerConfig.layerTest(process.cwd(), { prefix: "forgejo-bootstrap-" }).pipe(
+            Layer.provide(NodeServices.layer),
+          ),
+        ),
+        Effect.scoped,
+      ),
+  );
   it.effect("keeps effective draft prefixes scoped to each configured instance", () =>
     Effect.gen(function* () {
       const service = yield* load(

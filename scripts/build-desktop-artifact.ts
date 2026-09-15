@@ -2718,7 +2718,14 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     const path = yield* Path.Path;
     const repoRoot = yield* RepoRoot;
     buildConfig.mac = {
-      ...(isLocalForkVersion(version) ? { identity: "-", notarize: false } : {}),
+      ...(isLocalForkVersion(version)
+        ? {
+            identity: yield* Config.string("T3CODE_LOCAL_MAC_SIGNING_IDENTITY").pipe(
+              Config.withDefault("-"),
+            ),
+            notarize: false,
+          }
+        : {}),
       target: target === "dmg" ? [target, "zip"] : [target],
       icon: "icon.icns",
       category: "public.app-category.developer-tools",

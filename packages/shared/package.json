@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./localFork": {
+      "types": "./src/localFork.ts",
+      "import": "./src/localFork.ts"
+    },
     "./themePalettes": {
       "types": "./src/themePalettes.ts",
       "import": "./src/themePalettes.ts"

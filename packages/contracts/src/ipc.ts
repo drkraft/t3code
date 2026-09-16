@@ -1,3 +1,4 @@
+import type { DesktopForgejoConnectionInput, DesktopForgejoState } from "./desktopForgejo.ts";
 import type {
   VcsCreateRefInput,
   VcsCreateRefResult,
@@ -1212,6 +1213,17 @@ export const SystemSettingsPaneSchema = Schema.Literals(["full-disk-access"]);
 export type SystemSettingsPane = typeof SystemSettingsPaneSchema.Type;
 
 export interface DesktopBridge {
+  getForgejoConfiguration?: (input: {
+    readonly environmentUrl: string;
+  }) => Promise<DesktopForgejoState>;
+  saveForgejoConnection?: (input: {
+    readonly environmentUrl: string;
+    readonly connection: DesktopForgejoConnectionInput;
+  }) => Promise<DesktopForgejoState>;
+  removeForgejoConnection?: (input: {
+    readonly environmentUrl: string;
+    readonly id: string;
+  }) => Promise<DesktopForgejoState>;
   getAppBranding: () => DesktopAppBranding | null;
   /** The desktop client's OS platform, read from Electron's preload process. */
   getClientPlatform?: () => string;

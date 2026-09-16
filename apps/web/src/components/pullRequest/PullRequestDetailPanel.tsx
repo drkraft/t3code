@@ -916,6 +916,9 @@ export function PullRequestDetailPanel({
       input: {
         ...reference,
         action,
+        ...((action === "merge" || action === "update-branch") && detail?.headSha
+          ? { expectedHeadSha: detail.headSha }
+          : {}),
         ...(method ? { mergeMethod: method } : {}),
         ...(updateMethod ? { updateMethod } : {}),
       },

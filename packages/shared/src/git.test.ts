@@ -33,12 +33,21 @@ describe("normalizeGitRemoteUrl", () => {
     );
   });
 
-  it("drops explicit ports from URL-shaped remotes", () => {
+  it("preserves distinct server ports in URL-shaped remotes", () => {
     expect(normalizeGitRemoteUrl("https://gitlab.company.com:8443/team/project.git")).toBe(
-      "gitlab.company.com/team/project",
+      "gitlab.company.com:8443/team/project",
     );
     expect(normalizeGitRemoteUrl("ssh://git@gitlab.company.com:2222/team/project.git")).toBe(
-      "gitlab.company.com/team/project",
+      "gitlab.company.com:2222/team/project",
+    );
+  });
+
+  it("normalizes default HTTP ports while retaining a local Forgejo instance port", () => {
+    expect(normalizeGitRemoteUrl("http://127.0.0.1:59346/qa/fixture.git")).toBe(
+      "127.0.0.1:59346/qa/fixture",
+    );
+    expect(normalizeGitRemoteUrl("https://forgejo.example:443/qa/fixture.git")).toBe(
+      "forgejo.example/qa/fixture",
     );
   });
 

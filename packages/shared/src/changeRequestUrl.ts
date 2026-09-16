@@ -6,7 +6,7 @@ import { canonicalRepositoryKey } from "./sourceControl.ts";
  * is addressed, the repository path as that host writes it, and the number.
  *
  * The two strings are what `pullRequestHostOf` and the project's `repositoryIdentity` produce
- * from a git remote — lower case, no port, the full path below the host — because links are
+ * from a git remote — lower case, the full path below the host, and the Forgejo port — because links are
  * matched against those. Anything else matches nothing.
  */
 export interface ChangeRequestLink {
@@ -24,12 +24,13 @@ function isHostOf(hostname: string, apex: string, label?: string): boolean {
 /**
  * The repository and number behind a change request URL on a host this can read, or null for
  * anything else — an issue, a commit, a repository root, a host this cannot tell apart from an
- * ordinary link. A doubtful match is worse than no match, so nothing here guesses.
+ * ordinary link. Parsing produces a candidate, not proof of a configured provider.
  *
  * Each host is recognised by the path shape it alone uses, guarded by a hostname it could
  * plausibly be served from, since self-hosted installs are named whatever their admin chose:
  * GitLab's `/-/` marker is unique enough to trust on any hostname, while `/pull/` is generic
- * enough that it is only believed from a GitHub-ish host.
+ * enough that it is only believed from a GitHub-ish host. Forgejo uses `/pulls/`; its
+ * candidate is matched against configured project identities by the caller.
  *
  * Nothing here tries to tell a lookalike hostname from a real one — `github.com.evil.test` and
  * the rest are an open set, and blocking spellings of it costs real hosts (`gitlab.com.br` is a
@@ -45,6 +46,9 @@ export function parseChangeRequestUrl(targetUrl: string): ChangeRequestLink | nu
   // `javascript:`, `mailto:` and friends have no host to speak of and nothing to open.
   if (url.protocol !== "https:" && url.protocol !== "http:") return null;
   const host = url.hostname.toLowerCase();
+
+  const forgejo = /^\/([^/]+\/[^/]+)\/pulls\/(\d+)(?:\/|$)/u.exec(url.pathname);
+  if (forgejo) return claim(url.host.toLowerCase(), forgejo);
 
   // GitHub, and any Enterprise install: /{owner}/{repo}/pull/{n}
   if (isHostOf(host, "github.com", "github")) {
@@ -85,6 +89,8 @@ export function changeRequestUrlFor(
   number: number,
 ): string | null {
   switch (kind) {
+    case "forgejo":
+      return `https://${host}/${repository}/pulls/${number}`;
     case "github":
       return `https://${host}/${repository}/pull/${number}`;
     case "gitlab":
@@ -185,7 +191,7 @@ export function changeRequestRepositoryUrl(targetUrl: string): string | null {
   const url = new URL(targetUrl);
   const repositoryPath =
     /^(.*?)\/-\/merge_requests\/\d+(?:\/|$)/iu.exec(url.pathname)?.[1] ??
-    /^(.*?)(?:\/pull\/\d+|\/-\/merge_requests\/\d+|\/pull-requests\/\d+|\/pullrequest\/\d+)(?:\/|$)/iu.exec(
+    /^(.*?)(?:\/pulls?\/\d+|\/-\/merge_requests\/\d+|\/pull-requests\/\d+|\/pullrequest\/\d+)(?:\/|$)/iu.exec(
       url.pathname,
     )?.[1];
   if (!repositoryPath) return null;
@@ -199,7 +205,7 @@ export function siblingPullRequestUrl(url: string, number: number): string | nul
   const reference = parseChangeRequestUrl(url);
   if (reference === null || !Number.isSafeInteger(number) || number < 1) return null;
   const sibling = new URL(url);
-  const route = /^\/(-\/merge_requests|pull|pull-requests|pullrequest)\/\d+(?:\/|$)/u.exec(
+  const route = /^\/(-\/merge_requests|pulls?|pull-requests|pullrequest)\/\d+(?:\/|$)/u.exec(
     sibling.pathname.slice(reference.repository.length + 1),
   )?.[1];
   if (route === undefined) return null;

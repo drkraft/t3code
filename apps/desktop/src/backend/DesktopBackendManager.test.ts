@@ -4,6 +4,7 @@ import {
   DesktopTelemetryControlMessage,
 } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
+import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -315,39 +316,49 @@ describe("DesktopBackendManager", () => {
     }),
   );
 
-  it.effect("reports bootstrap encoding failures with stable process context", () =>
-    Effect.gen(function* () {
-      const spawnerLayer = Layer.succeed(
-        ChildProcessSpawner.ChildProcessSpawner,
-        ChildProcessSpawner.make(() => Effect.die("unexpected backend spawn")),
-      );
-      const error = yield* DesktopBackendManager.runBackendProcess({
-        ...baseConfig,
-        desktopTelemetryStream: Stream.empty,
-        bootstrap: {
-          ...baseConfig.bootstrap,
-          port: 0,
-        },
-      }).pipe(
-        Effect.flip,
-        Effect.scoped,
-        Effect.provide(Layer.merge(spawnerLayer, healthyHttpClientLayer)),
-      );
+  it.effect(
+    "reports bootstrap encoding failures without retaining secret-bearing schema causes",
+    () =>
+      Effect.gen(function* () {
+        const spawnerLayer = Layer.succeed(
+          ChildProcessSpawner.ChildProcessSpawner,
+          ChildProcessSpawner.make(() => Effect.die("unexpected backend spawn")),
+        );
+        const error = yield* DesktopBackendManager.runBackendProcess({
+          ...baseConfig,
+          desktopTelemetryStream: Stream.empty,
+          bootstrap: {
+            ...baseConfig.bootstrap,
+            forgejoConnections: [
+              {
+                id: "local",
+                apiUrl: "synthetic-bootstrap-secret",
+                gitHosts: [],
+                token: "synthetic-bootstrap-secret",
+              },
+            ],
+          },
+        }).pipe(
+          Effect.flip,
+          Effect.scoped,
+          Effect.provide(Layer.merge(spawnerLayer, healthyHttpClientLayer)),
+        );
 
-      if (error._tag !== "BackendProcessBootstrapEncodeError") {
-        return assert.fail(`Expected bootstrap encode error, received ${error._tag}`);
-      }
-      assert.equal(error.executablePath, "/electron");
-      assert.equal(error.entryPath, "/server/bin.mjs");
-      assert.equal(error.cwd, "/server");
-      assert.equal(error.httpBaseUrl.href, "http://127.0.0.1:3773/");
-      assert.isDefined(error.cause);
-      assert.equal(
-        error.message,
-        "Failed to encode the desktop backend bootstrap payload for /server/bin.mjs.",
-      );
-      assert.isTrue(isBackendProcessError(error));
-    }),
+        if (error._tag !== "BackendProcessBootstrapEncodeError") {
+          return assert.fail(`Expected bootstrap encode error, received ${error._tag}`);
+        }
+        assert.equal(error.executablePath, "/electron");
+        assert.equal(error.entryPath, "/server/bin.mjs");
+        assert.equal(error.cwd, "/server");
+        assert.equal(error.httpBaseUrl.href, "http://127.0.0.1:3773/");
+        assert.isFalse("cause" in error && error.cause !== undefined);
+        assert.notInclude(Cause.pretty(Cause.fail(error)), "synthetic-bootstrap-secret");
+        assert.equal(
+          error.message,
+          "Failed to encode the desktop backend bootstrap payload for /server/bin.mjs.",
+        );
+        assert.isTrue(isBackendProcessError(error));
+      }),
   );
 
   it.effect("preserves spawn failures without deriving their message from the cause", () =>

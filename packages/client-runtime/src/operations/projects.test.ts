@@ -217,6 +217,32 @@ describe("add project shared logic", () => {
     expect(sortAddProjectProviderSources(readiness)[0]).toBe("github");
   });
 
+  it("offers Forgejo cloning when its API connection is authenticated", () => {
+    const discovery: SourceControlDiscoveryResult = {
+      versionControlSystems: [],
+      sourceControlProviders: [
+        {
+          kind: "forgejo",
+          label: "Forgejo",
+          status: "available",
+          installHint: "Configure an API connection",
+          version: Option.none(),
+          detail: Option.none(),
+          auth: {
+            status: "authenticated",
+            account: Option.none(),
+            host: Option.none(),
+            detail: Option.none(),
+          },
+        },
+      ],
+    };
+
+    const readiness = buildAddProjectRemoteSourceReadiness(discovery);
+
+    expect(sortAddProjectProviderSources(readiness)[0]).toBe("forgejo");
+  });
+
   it("finds existing projects by normalized path in the target environment", () => {
     const env = EnvironmentId.make("env");
     const other = EnvironmentId.make("other");

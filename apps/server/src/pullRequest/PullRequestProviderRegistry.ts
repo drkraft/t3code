@@ -2,12 +2,15 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type { SourceControlProviderKind } from "@t3tools/contracts";
+import { FetchHttpClient } from "effect/unstable/http";
 
 import * as AzureDevOpsCli from "../sourceControl/AzureDevOpsCli.ts";
 import * as BitbucketApi from "../sourceControl/BitbucketApi.ts";
 import * as GitHubCli from "../sourceControl/GitHubCli.ts";
 import * as GitHubGraphQlBudget from "../sourceControl/githubGraphQlBudget.ts";
 import * as GitLabCli from "../sourceControl/GitLabCli.ts";
+import * as ForgejoApi from "../sourceControl/ForgejoApi.ts";
+import * as ForgejoPullRequestProvider from "./ForgejoPullRequestProvider.ts";
 import * as AzureDevOpsPullRequestCli from "./AzureDevOpsPullRequestCli.ts";
 import * as AzureDevOpsPullRequestProvider from "./AzureDevOpsPullRequestProvider.ts";
 import * as BitbucketPullRequestApi from "./BitbucketPullRequestApi.ts";
@@ -50,8 +53,15 @@ export const make = Effect.map(
     GitLabPullRequestProvider.make,
     BitbucketPullRequestProvider.make,
     AzureDevOpsPullRequestProvider.make,
+    ForgejoApi.make.pipe(
+      Effect.flatMap((api) =>
+        ForgejoPullRequestProvider.make.pipe(Effect.provideService(ForgejoApi.ForgejoApi, api)),
+      ),
+      Effect.provide(FetchHttpClient.layer),
+      Effect.orElseSucceed(() => null),
+    ),
   ]),
-  fromProviders,
+  (providers) => fromProviders(providers.filter((provider) => provider !== null)),
 );
 
 export const layer = Layer.effect(PullRequestProviderRegistry, make).pipe(

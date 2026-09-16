@@ -424,3 +424,23 @@ it("searches the legacy projection when old environments decode to an empty link
     threadPullRequestSearchTerms({ pullRequests: [link(34)], linkedPullRequest }),
   ).not.toContain("#12");
 });
+
+it("derives Forgejo stacks from branches while keeping repositories and ports separate", () => {
+  const makeForgejoLink = (number: number, headBranch: string, baseBranch: string) =>
+    link(number, {
+      host: "code.example:8443",
+      repository: "team/app",
+      url: `https://code.example:8443/team/app/pulls/${number}`,
+      snapshot: snapshot({ headBranch, baseBranch }),
+    });
+  const bottom = makeForgejoLink(1, "foundation", "main");
+  const top = makeForgejoLink(2, "feature", "foundation");
+  const otherRepo = { ...makeForgejoLink(3, "other", "feature"), repository: "team/other" };
+  const otherPort = { ...makeForgejoLink(4, "another", "feature"), host: "code.example:9443" };
+  const chains = resolveThreadPullRequestChains([top, otherRepo, bottom, otherPort]);
+  expect(chains.find((chain) => chain.layers.length === 2)).toMatchObject({
+    kind: "derived",
+    layers: [{ number: 1 }, { number: 2 }],
+  });
+  expect(chains.filter((chain) => chain.layers.length === 1)).toHaveLength(2);
+});

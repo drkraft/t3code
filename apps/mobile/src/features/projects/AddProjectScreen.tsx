@@ -111,7 +111,8 @@ function sourceFromParam(value: string | string[] | undefined): AddProjectRemote
     source === "github" ||
     source === "gitlab" ||
     source === "bitbucket" ||
-    source === "azure-devops"
+    source === "azure-devops" ||
+    source === "forgejo"
   ) {
     return source;
   }
@@ -700,7 +701,7 @@ export function AddProjectRepositoryScreen(props: {
         StackActions.push("AddProjectDestination", {
           environmentId: environment.environmentId,
           source,
-          remoteUrl: getDefaultCloneUrl(repository),
+          remoteUrl: getDefaultCloneUrl(repository, repositoryInput),
           repositoryTitle: repository.nameWithOwner,
           repositoryName: getCloneDirectoryName(repository.nameWithOwner),
         }),

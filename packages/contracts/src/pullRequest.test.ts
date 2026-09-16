@@ -7,8 +7,49 @@ import {
   PullRequestListInput,
   PullRequestListResult,
   PullRequestReviewerRequestInput,
+  PullRequestReviewCommentDraft,
+  pullRequestHostOf,
   resolvePullRequestAuthorFilter,
 } from "./pullRequest.ts";
+
+it("preserves the displayed diff revisions through review draft decoding", () => {
+  const snapshot = { baseSha: "a".repeat(40), headSha: "b".repeat(40) };
+  const input = {
+    path: "file.ts",
+    position: { kind: "deleted", oldLine: 3 },
+    body: "Review",
+    snapshot,
+  };
+  expect(Schema.decodeUnknownSync(PullRequestReviewCommentDraft)(input)).toEqual(input);
+});
+
+describe("pullRequestHostOf", () => {
+  it.each([
+    ["127.0.0.1/qa/fixture", "http://127.0.0.1:59346/qa/fixture.git", "127.0.0.1:59346"],
+    [
+      "forgejo.example/team/repo",
+      "ssh://git@forgejo.example:2222/team/repo.git",
+      "forgejo.example:2222",
+    ],
+    [
+      "forgejo.example:8443/team/repo",
+      "https://forgejo.example:8443/team/repo.git",
+      "forgejo.example:8443",
+    ],
+    [
+      "canonical.example/team/repo",
+      "https://alias.example:8443/team/repo.git",
+      "canonical.example",
+    ],
+    ["forgejo.example/team/repo", "git@forgejo.example:team/repo.git", "forgejo.example"],
+  ])(
+    "routes %s using its remote authority when a legacy key lost its port",
+    (canonicalKey, remoteUrl, expected) => {
+      const identity = { canonicalKey, locator: { remoteUrl } };
+      expect(pullRequestHostOf(identity, "unknown")).toBe(expected);
+    },
+  );
+});
 
 const decodeListResult = Schema.decodeUnknownSync(PullRequestListResult);
 const decodeListInput = Schema.decodeUnknownSync(PullRequestListInput);
@@ -155,6 +196,22 @@ describe("PullRequestReviewerRequestInput", () => {
         requested: true,
       }).reviewers.map((entry) => entry.kind),
     ).toEqual(["user", "team"]);
+  });
+});
+
+describe("action head precondition", () => {
+  const ref = { projectId: "project-1", repository: "acme/web", number: 7 };
+
+  it("preserves the observed head for merge and update actions", () => {
+    for (const action of ["merge", "update-branch"]) {
+      expect(decodeAction({ ...ref, action, expectedHeadSha: "a".repeat(40) })).toMatchObject({
+        expectedHeadSha: "a".repeat(40),
+      });
+    }
+  });
+
+  it("rejects an empty head precondition", () => {
+    expect(() => decodeAction({ ...ref, action: "merge", expectedHeadSha: " " })).toThrow();
   });
 });
 

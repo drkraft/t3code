@@ -4,6 +4,9 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Result from "effect/Result";
+import { FetchHttpClient } from "effect/unstable/http";
 import {
   SourceControlProviderError,
   type SourceControlProviderDiscoveryItem,
@@ -15,6 +18,8 @@ import * as AzureDevOpsSourceControlProvider from "./AzureDevOpsSourceControlPro
 import * as BitbucketSourceControlProvider from "./BitbucketSourceControlProvider.ts";
 import * as GitHubSourceControlProvider from "./GitHubSourceControlProvider.ts";
 import * as GitLabSourceControlProvider from "./GitLabSourceControlProvider.ts";
+import * as ForgejoApi from "./ForgejoApi.ts";
+import * as ForgejoSourceControlProvider from "./ForgejoSourceControlProvider.ts";
 import * as SourceControlProvider from "./SourceControlProvider.ts";
 import {
   probeSourceControlProvider,
@@ -299,6 +304,45 @@ export const make = Effect.gen(function* () {
   const bitbucket = yield* BitbucketSourceControlProvider.make;
   const bitbucketDiscovery = yield* BitbucketSourceControlProvider.makeDiscovery;
   const azureDevOps = yield* AzureDevOpsSourceControlProvider.make;
+  const forgejo = yield* ForgejoApi.make.pipe(Effect.provide(FetchHttpClient.layer), Effect.result);
+  const forgejoProvider = yield* Result.match(forgejo, {
+    onSuccess: (api) =>
+      ForgejoSourceControlProvider.make.pipe(
+        Effect.provideService(ForgejoApi.ForgejoApi, api),
+        Effect.orElseSucceed(() => unsupportedProvider("forgejo")),
+      ),
+    onFailure: () => Effect.succeed(unsupportedProvider("forgejo")),
+  });
+  const forgejoDiscovery: SourceControlProviderDiscoverySpec = {
+    kind: "forgejo",
+    label: "Forgejo",
+    type: "api",
+    installHint: "Configure T3CODE_FORGEJO_CONNECTIONS and its token variables on the server.",
+    probeAuth: Result.match(forgejo, {
+      onSuccess: (api) => api.probeAuth,
+      onFailure: (error) =>
+        Effect.succeed({
+          status: "unknown" as const,
+          account: Option.none(),
+          host: Option.none(),
+          detail: Option.some(error.message),
+        }),
+    }),
+    resolveRemote: (remoteUrl) =>
+      Result.match(forgejo, {
+        onFailure: () => null,
+        onSuccess: (api) => {
+          const connection = api.resolveConnection(remoteUrl);
+          return connection
+            ? {
+                kind: "forgejo" as const,
+                name: "Forgejo",
+                baseUrl: connection.apiUrl.replace(/\/api\/v1$/u, ""),
+              }
+            : null;
+        },
+      }),
+  };
   return yield* makeWithProviders([
     {
       kind: "github",
@@ -319,6 +363,11 @@ export const make = Effect.gen(function* () {
       kind: "bitbucket",
       provider: bitbucket,
       discovery: bitbucketDiscovery,
+    },
+    {
+      kind: "forgejo",
+      provider: forgejoProvider,
+      discovery: forgejoDiscovery,
     },
   ]);
 });

@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import * as NodeUtil from "node:util";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeChildProcess from "node:child_process";
@@ -73,6 +74,7 @@ const openBootstrapInputFd = (filePath: string) =>
     (fd) => (windowsHost ? Effect.void : Effect.sync(() => closeIfOpen(fd))),
   );
 
+const encodeUnknown = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const TestEnvelopeSchema = Schema.Struct({ mode: Schema.String });
 const encodeTestEnvelopeSchema = Schema.encodeEffect(Schema.fromJsonString(TestEnvelopeSchema));
 
@@ -192,20 +194,26 @@ it.layer(NodeServices.layer)("readBootstrapEnvelope", (it) => {
     }),
   );
 
-  it.effect("preserves fd and schema cause when decoding the envelope fails", () =>
+  it.effect("preserves fd without retaining secret-bearing schema causes when decoding fails", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const filePath = yield* fs.makeTempFileScoped({ prefix: "t3-bootstrap-", suffix: ".ndjson" });
-      yield* fs.writeFileString(filePath, '{"mode":42}\n');
+      yield* fs.writeFileString(filePath, '{"mode":"synthetic-bootstrap-secret"}\n');
 
       const fd = yield* openBootstrapInputFd(filePath);
-      const error = yield* readBootstrapEnvelope(TestEnvelopeSchema, fd, {
-        timeoutMs: 100,
-      }).pipe(Effect.flip);
+      const error = yield* readBootstrapEnvelope(
+        Schema.Struct({ mode: Schema.Literal("desktop") }),
+        fd,
+        {
+          timeoutMs: 100,
+        },
+      ).pipe(Effect.flip);
 
       assert.instanceOf(error, BootstrapEnvelopeDecodeError);
       assert.equal(error.fd, fd);
-      assert.isDefined(error.cause);
+      assert.notInclude(yield* encodeUnknown(error), "synthetic-bootstrap-secret");
+      assert.isFalse("cause" in error && error.cause !== undefined);
+      assert.notInclude(NodeUtil.inspect(error, { depth: null }), "synthetic-bootstrap-secret");
       assert.equal(
         error.message,
         `Failed to decode bootstrap envelope from file descriptor ${fd}.`,

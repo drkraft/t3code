@@ -55,7 +55,6 @@ export class BootstrapEnvelopeDecodeError extends Schema.TaggedError<BootstrapEn
   "BootstrapEnvelopeDecodeError",
   {
     fd: Schema.Number,
-    cause: Schema.Defect(),
   },
 ) {
   override get message(): string {
@@ -126,7 +125,6 @@ export const readBootstrapEnvelope = Effect.fn("readBootstrapEnvelope")(function
           Effect.fail(
             new BootstrapEnvelopeDecodeError({
               fd,
-              cause: parsed.failure,
             }),
           ),
         );

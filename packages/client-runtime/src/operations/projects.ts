@@ -25,7 +25,7 @@ import type { EnvironmentProject } from "../state/models.ts";
 
 export type AddProjectRemoteProviderKind = Extract<
   SourceControlProviderKind,
-  "github" | "gitlab" | "bitbucket" | "azure-devops"
+  "github" | "gitlab" | "bitbucket" | "azure-devops" | "forgejo"
 >;
 export type AddProjectRemoteSource = AddProjectRemoteProviderKind | "url";
 
@@ -61,6 +61,7 @@ const ADD_PROJECT_REMOTE_SOURCES: ReadonlyArray<AddProjectRemoteSource> = [
   "gitlab",
   "bitbucket",
   "azure-devops",
+  "forgejo",
 ];
 
 const ADD_PROJECT_REMOTE_PROVIDER_SOURCES: ReadonlyArray<AddProjectRemoteProviderKind> = [
@@ -68,6 +69,7 @@ const ADD_PROJECT_REMOTE_PROVIDER_SOURCES: ReadonlyArray<AddProjectRemoteProvide
   "gitlab",
   "bitbucket",
   "azure-devops",
+  "forgejo",
 ];
 
 export function addProjectRemoteSourceLabel(source: AddProjectRemoteSource): string {
@@ -80,6 +82,8 @@ export function addProjectRemoteSourceLabel(source: AddProjectRemoteSource): str
       return "Bitbucket";
     case "azure-devops":
       return "Azure DevOps";
+    case "forgejo":
+      return "Forgejo";
     case "url":
       return "Git URL";
   }
@@ -95,6 +99,8 @@ export function addProjectRemoteSourcePathHint(source: AddProjectRemoteSource): 
       return "workspace/repository";
     case "azure-devops":
       return "project/repository";
+    case "forgejo":
+      return "owner/repo or full repository URL";
     case "url":
       return "URL";
   }
@@ -117,10 +123,14 @@ export function normalizePastedCloneUrl(input: string): string {
   return `https://github.com/${repository}`;
 }
 
-/** GitHub defaults to HTTPS; other providers retain their existing SSH default. */
+/** Forgejo honors an explicit HTTP URL; otherwise retain the provider's default. */
 export function getDefaultCloneUrl(
   repository: Pick<SourceControlRepositoryInfo, "provider" | "url" | "sshUrl">,
+  repositoryInput?: string,
 ): string {
+  if (repository.provider === "forgejo" && /^https?:\/\//iu.test(repositoryInput?.trim() ?? "")) {
+    return repository.url;
+  }
   return repository.provider === "github" ? repository.url : repository.sshUrl;
 }
 
@@ -155,6 +165,7 @@ export function buildAddProjectRemoteSourceReadiness(
     gitlab: unavailable,
     bitbucket: unavailable,
     "azure-devops": unavailable,
+    forgejo: unavailable,
   };
 
   if (!discovery) {

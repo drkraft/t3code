@@ -71,6 +71,12 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   getLocalEnvironmentBearerToken: () =>
     ipcRenderer.invoke(IpcChannels.GET_LOCAL_ENVIRONMENT_BEARER_TOKEN_CHANNEL),
   getClientSettings: () => ipcRenderer.invoke(IpcChannels.GET_CLIENT_SETTINGS_CHANNEL),
+  getForgejoConfiguration: (input) =>
+    ipcRenderer.invoke(IpcChannels.GET_FORGEJO_CONFIGURATION_CHANNEL, input),
+  saveForgejoConnection: (input) =>
+    ipcRenderer.invoke(IpcChannels.SAVE_FORGEJO_CONNECTION_CHANNEL, input),
+  removeForgejoConnection: (input) =>
+    ipcRenderer.invoke(IpcChannels.REMOVE_FORGEJO_CONNECTION_CHANNEL, input),
   setClientSettings: (settings) =>
     ipcRenderer.invoke(IpcChannels.SET_CLIENT_SETTINGS_CHANNEL, settings),
   requestSnapShotPermissions: (includeAccessibility) =>

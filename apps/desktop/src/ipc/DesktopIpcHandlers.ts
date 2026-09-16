@@ -1,6 +1,11 @@
 import * as Effect from "effect/Effect";
 
 import * as DesktopIpc from "./DesktopIpc.ts";
+import {
+  getForgejoConfiguration,
+  saveForgejoConnection,
+  removeForgejoConnection,
+} from "./methods/forgejo.ts";
 import { getClientSettings, setClientSettings } from "./methods/clientSettings.ts";
 import {
   clearConnectionCatalog,
@@ -79,6 +84,9 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(getLocalEnvironmentBearerToken);
 
   yield* ipc.handle(getClientSettings);
+  yield* ipc.handle(getForgejoConfiguration);
+  yield* ipc.handle(saveForgejoConnection);
+  yield* ipc.handle(removeForgejoConnection);
   yield* ipc.handle(setClientSettings);
   yield* ipc.handle(getConnectionCatalog);
   yield* ipc.handle(getSnapShotState);

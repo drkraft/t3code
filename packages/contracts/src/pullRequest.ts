@@ -244,8 +244,9 @@ export const PullRequestReviewThread = Schema.Struct({
   /**
    * The line the thread was written against is no longer in the diff, so it cannot be shown
    * against the code. Such a thread is listed separately rather than pinned to the wrong line.
+   * Null means the host cannot verify the anchor; keep that thread separate as well.
    */
-  isOutdated: Schema.Boolean,
+  isOutdated: Schema.NullOr(Schema.Boolean),
   comments: Schema.Array(PullRequestThreadComment),
   /** Host-reported total, when this thread was read in pages. */
   commentCount: Schema.optional(NonNegativeInt),
@@ -758,6 +759,7 @@ export const PullRequestInvalidateInput = Schema.Struct({
 export type PullRequestInvalidateInput = typeof PullRequestInvalidateInput.Type;
 
 export const PullRequestDetail = Schema.Struct({
+  headSha: Schema.optional(TrimmedNonEmptyString),
   provider: SourceControlProviderKind,
   capabilities: PullRequestCapabilities,
   /** What this viewer may do, which `capabilities` says nothing about. Both narrow the page. */
@@ -889,7 +891,15 @@ export const PullRequestOmittedFileStat = Schema.Struct({
 });
 export type PullRequestOmittedFileStat = typeof PullRequestOmittedFileStat.Type;
 
+/** Exact revisions of the displayed patch, retained when expanding unchanged lines. */
+export const PullRequestDiffSnapshot = Schema.Struct({
+  baseSha: Schema.NullOr(TrimmedNonEmptyString),
+  headSha: TrimmedNonEmptyString,
+});
+export type PullRequestDiffSnapshot = typeof PullRequestDiffSnapshot.Type;
+
 export const PullRequestDiffResult = Schema.Struct({
+  snapshot: Schema.optional(PullRequestDiffSnapshot),
   patch: Schema.String,
   /**
    * Something inside this slice could not be shown — a binary file, or a hunk the host declined
@@ -909,6 +919,7 @@ export type PullRequestDiffResult = typeof PullRequestDiffResult.Type;
 /** The complete old and new files Pierre needs to open omitted context in a host-backed patch. */
 export const PullRequestDiffFileContentsInput = Schema.Struct({
   ...PullRequestRef.fields,
+  snapshot: Schema.optional(PullRequestDiffSnapshot),
   /** One commit's own comparison; absent means the whole change request. */
   commit: Schema.optional(TrimmedNonEmptyString),
   changeType: Schema.Literals(["change", "rename-pure", "rename-changed", "new", "deleted"]),
@@ -930,6 +941,7 @@ export const PullRequestStackHead = Schema.Struct({
 export type PullRequestStackHead = typeof PullRequestStackHead.Type;
 
 export const PullRequestActionInput = Schema.Struct({
+  expectedHeadSha: Schema.optional(TrimmedNonEmptyString),
   /** Native stack scope; only send to environments advertising pullRequestStackActions. */
   stackNumber: Schema.optional(PositiveInt),
   expectedStackHeads: Schema.optional(Schema.Array(PullRequestStackHead)),
@@ -1015,6 +1027,8 @@ export type PullRequestReviewPosition = typeof PullRequestReviewPosition.Type;
 /** One remark in a review that has not been sent yet, anchored to a line of the diff. */
 export const PullRequestReviewCommentDraft = Schema.Struct({
   path: TrimmedNonEmptyString,
+  /** Revisions displayed when this line was selected, retained across diff refreshes. */
+  snapshot: Schema.optional(PullRequestDiffSnapshot),
   /**
    * What the file was called before the change, sent only when it differs. GitLab resolves a
    * position against both sides of the diff, so a comment on a renamed file needs both names;
@@ -1161,11 +1175,27 @@ const PROVIDER_REQUIREMENT: Partial<
  * knows its hosts before the listing answers, and the two must agree on what they are called.
  */
 export function pullRequestHostOf(
-  identity: { readonly canonicalKey?: string | undefined } | null | undefined,
+  identity:
+    | {
+        readonly canonicalKey?: string | undefined;
+        readonly locator?: { readonly remoteUrl: string } | undefined;
+      }
+    | null
+    | undefined,
   kind: SourceControlProviderKind,
 ): string {
   const host = identity?.canonicalKey?.split("/")[0]?.trim();
-  return host === undefined || host.length === 0 ? kind : host.toLowerCase();
+  if (host === undefined || host.length === 0) return kind;
+  const normalizedHost = host.toLowerCase();
+  // Persisted identities predating port-aware normalization retain the full remote URL.
+  const remoteUrl = identity?.locator?.remoteUrl;
+  if (remoteUrl && /^(?:ssh|https?|git):\/\//i.test(remoteUrl) && URL.canParse(remoteUrl)) {
+    const remote = new URL(remoteUrl);
+    if (remote.port && remote.hostname.toLowerCase() === normalizedHost) {
+      return remote.host.toLowerCase();
+    }
+  }
+  return normalizedHost;
 }
 
 /**

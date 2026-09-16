@@ -445,49 +445,59 @@ describe("PullRequestSyncReactor", () => {
     ),
   );
 
-  it.effect("refreshes closed links through the reactor's project after reopening elsewhere", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        yield* TestClock.setTime(Date.parse(NOW));
-        const stale = yield* Ref.make(true);
-        const fixture = yield* makeHarness({
-          snapshot: makeSnapshot([
-            makeThread("first", { pullRequests: [makeLink(42, { state: "closed" })] }),
-            makeThread("second", {
-              projectId: ProjectId.make("second-project"),
-              pullRequests: [makeLink(42, { state: "closed" })],
-            }),
-          ]),
-          invalidate: ({ reference }) =>
-            reference?.projectId === makeProject().id && reference.host === "github.com"
-              ? Ref.set(stale, false)
-              : Effect.void,
-          summary: (input) =>
-            Ref.get(stale).pipe(
-              Effect.map((cached) => makeSummary(input, { state: cached ? "closed" : "open" })),
-            ),
-        });
-        yield* Effect.gen(function* () {
-          const reactor = yield* startAndSweep(fixture);
-          assert.strictEqual((yield* Ref.get(fixture.summaryCalls)).length, 1);
-          yield* reactor.requestSync({
-            host: "github.com",
-            repository: "owner/repository",
-            number: 42,
-          });
-          yield* Queue.take(fixture.snapshotReads);
-          yield* reactor.drain;
-          const commands = yield* Ref.get(fixture.syncCommands);
-          yield* Ref.update(fixture.snapshots, (snapshot) => applySync(snapshot, commands));
-          const snapshot = yield* Ref.get(fixture.snapshots);
-          assert.deepStrictEqual(
-            snapshot.threads.map((thread) => thread.pullRequests[0]?.snapshot?.state),
-            ["open", "open"],
-          );
-        }).pipe(Effect.provide(fixture.layer));
-      }),
-    ),
-  );
+  for (const provider of ["github", "forgejo"] as const) {
+    const host = provider === "github" ? "github.com" : "forgejo.example.test";
+    const url = `https://${host}/owner/repository/${provider === "github" ? "pull" : "pulls"}/42`;
+    it.effect(
+      `refreshes closed ${provider} links through the reactor's project after reopening elsewhere`,
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            yield* TestClock.setTime(Date.parse(NOW));
+            const stale = yield* Ref.make(true);
+            const fixture = yield* makeHarness({
+              snapshot: makeSnapshot([
+                makeThread("first", {
+                  pullRequests: [makeLink(42, { state: "closed" }, { host, url })],
+                }),
+                makeThread("second", {
+                  projectId: ProjectId.make("second-project"),
+                  pullRequests: [makeLink(42, { state: "closed" }, { host, url })],
+                }),
+              ]),
+              invalidate: ({ reference }) =>
+                reference?.projectId === makeProject().id && reference.host === host
+                  ? Ref.set(stale, false)
+                  : Effect.void,
+              summary: (input) =>
+                Ref.get(stale).pipe(
+                  Effect.map((cached) =>
+                    makeSummary(input, { provider, url, state: cached ? "closed" : "open" }),
+                  ),
+                ),
+            });
+            yield* Effect.gen(function* () {
+              const reactor = yield* startAndSweep(fixture);
+              assert.strictEqual((yield* Ref.get(fixture.summaryCalls)).length, 1);
+              yield* reactor.requestSync({
+                host,
+                repository: "owner/repository",
+                number: 42,
+              });
+              yield* Queue.take(fixture.snapshotReads);
+              yield* reactor.drain;
+              const commands = yield* Ref.get(fixture.syncCommands);
+              yield* Ref.update(fixture.snapshots, (snapshot) => applySync(snapshot, commands));
+              const snapshot = yield* Ref.get(fixture.snapshots);
+              assert.deepStrictEqual(
+                snapshot.threads.map((thread) => thread.pullRequests[0]?.snapshot?.state),
+                ["open", "open"],
+              );
+            }).pipe(Effect.provide(fixture.layer));
+          }),
+        ),
+    );
+  }
 
   it.effect("stops asking the host once a pull request is merged", () =>
     Effect.scoped(

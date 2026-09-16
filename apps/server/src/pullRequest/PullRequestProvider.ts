@@ -19,6 +19,7 @@ import type {
   PullRequestMergeMethod,
   PullRequestMergeability,
   PullRequestOmittedFileStat,
+  PullRequestDiffSnapshot,
   PullRequestReaction,
   PullRequestReactionContent,
   PullRequestReviewCommentDraft,
@@ -205,6 +206,7 @@ export interface ProviderChangeRequestStat {
 }
 
 export interface ProviderChangeRequestDetail extends ProviderChangeRequest {
+  readonly headSha?: string | null;
   readonly body: string;
   readonly changedFiles: number;
   readonly mergedAt: string | null;
@@ -245,6 +247,7 @@ export interface ProviderChangeRequestActivity {
 }
 
 export interface ProviderDiffSlice {
+  readonly snapshot?: PullRequestDiffSnapshot;
   readonly patch: string;
   /** Something in this slice could not be shown, as opposed to there being more slices. */
   readonly truncated: boolean;
@@ -421,6 +424,7 @@ export interface PullRequestProviderApi {
   readonly getDiffFileContents?: (
     input: ProviderRepositoryRef & {
       readonly number: number;
+      readonly snapshot?: PullRequestDiffSnapshot;
       readonly commit?: string | undefined;
       readonly changeType: "change" | "rename-pure" | "rename-changed" | "new" | "deleted";
       readonly oldPath: string;
@@ -434,6 +438,7 @@ export interface PullRequestProviderApi {
       readonly action: PullRequestAction;
       readonly stackNumber?: number;
       readonly expectedStackHeads?: ReadonlyArray<PullRequestStackHead>;
+      readonly expectedHeadSha?: string;
       /** Meaningful for `merge` and `enable-auto-merge`; absent takes the host's own default. */
       readonly mergeMethod?: PullRequestMergeMethod;
       /** Only meaningful for `update-branch`; absent takes the host's own default. */

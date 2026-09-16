@@ -1,6 +1,6 @@
 # Source control
 
-T3 Code integrates with GitHub, GitLab, Bitbucket, and Azure DevOps to clone and publish
+T3 Code integrates with GitHub, GitLab, Forgejo, Bitbucket, and Azure DevOps to clone and publish
 repositories, create pull requests, and review changes.
 
 ## Connect an account
@@ -43,6 +43,63 @@ export T3CODE_BITBUCKET_API_TOKEN="your-token"
 
 The access token takes precedence if both are configured. Restart the server after changing these
 variables.
+
+### Forgejo connection setup
+
+Forgejo instances must be hosted at the root of their domain (for example `https://forge.example`).
+Instances under a path such as `https://example.com/forgejo` are not supported.
+
+On macOS desktop, select the built-in local environment in **Settings → Source Control**, then
+use **Add Forgejo connection**. Enter an instance root URL, a unique connection ID and an API
+token. Advanced options accept additional Git hosts or SSH aliases and the instance’s WIP prefixes.
+The token is encrypted using macOS native storage; macOS may ask for keychain access. The form
+never reveals a saved token. When editing, leave the token blank to keep it; changing the instance
+host requires a replacement token.
+
+Save, then quit and reopen T3 Code to apply changes. Saving never restarts the server. You can
+subsequently launch the app from the Dock or Spotlight without a Terminal launcher. Check account
+authentication in **Source Control Providers** after reopening; **Rescan** checks the running
+configuration without applying pending changes. Replace the token if authentication fails. Removing
+a connection also takes effect after reopening and does not revoke its token on Forgejo.
+
+This editor is available only for the selected built-in Mac environment, not project scopes or
+remote servers. Web and mobile clients use their server’s configuration. If
+`T3CODE_FORGEJO_CONNECTIONS` is present, even as `[]`, it takes precedence over the saved
+configuration and the editor is read-only. There is no merging of the two configurations.
+
+For remote servers or environment-based setup, configure instances on the machine running the
+server. Each connection names an API URL,
+Git hosts or SSH aliases, and the environment variable containing its token:
+
+```bash
+export T3CODE_FORGEJO_CONNECTIONS='[{"id":"work","apiUrl":"https://forge.example/api/v1","gitHosts":["git.example:2222","work-git"],"tokenEnv":"WORK_FORGEJO_TOKEN"}]'
+```
+
+Supply `WORK_FORGEJO_TOKEN` through your server's environment or secret manager. Tokens need
+permission to read the current user and repositories, plus write access for creating repositories
+or pull requests. The API hostname is recognized automatically; SSH ports
+must match explicitly. Give each host or alias to one connection only. Restart the server after
+changing configuration, then use **Settings → Source Control → Rescan** to check the accounts.
+If you use a credential-injecting proxy with Node, start the server with `NODE_USE_ENV_PROXY=1`.
+
+To change pull requests between draft and ready, add `wipPrefixes` to the connection with the
+instance's effective `[repository.pull-request] WORK_IN_PROGRESS_PREFIXES` values, for example
+`"wipPrefixes":["WIP:","[WIP]"]`. Ask the instance administrator for these values; Forgejo's API
+does not expose them. Draft transitions are unavailable until they are configured. T3 checks the
+resulting draft state on Forgejo after changing the title.
+
+Choose Forgejo when cloning or publishing a repository. With one configured instance, use
+`owner/repository`; with multiple instances, enter the full repository URL to select the host.
+When cloning, an HTTP or HTTPS repository URL uses the server's HTTP(S) clone URL;
+an SSH URL or `owner/repository` uses SSH.
+Git authentication for cloning and pushing must also be configured on the server.
+
+Forgejo supports repository operations, pull request creation and checkout, and integrated review.
+You can comment, review, edit, request reviewers, change labels and reactions, and close or reopen
+pull requests. Merge and branch update methods follow the repository's settings and your access.
+Forgejo checks its branch protections when an action runs; it may refuse a rule that the API could
+not report beforehand. Thread resolution and automatic merge remain available on Forgejo through
+the pull request's host link. Commit or stash local changes before checkout.
 
 ### Azure DevOps
 

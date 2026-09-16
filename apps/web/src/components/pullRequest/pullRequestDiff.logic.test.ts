@@ -1,7 +1,11 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { describe, expect, it } from "vite-plus/test";
 
-import { isFileDiffCollapsed, isLineInFileDiff } from "./pullRequestDiff.logic";
+import {
+  isFileDiffCollapsed,
+  isLineInFileDiff,
+  isReviewThreadInFileDiff,
+} from "./pullRequestDiff.logic";
 
 /** Only the hunk ranges matter here; the viewer fills the rest in when it renders. */
 function fileWithHunks(
@@ -77,5 +81,29 @@ describe("isFileDiffCollapsed", () => {
   it("still answers to a toggle after either toolbar press", () => {
     expect(isFileDiffCollapsed("a.ts", "expanded", new Set(["a.ts"]))).toBe(true);
     expect(isFileDiffCollapsed("a.ts", "folded", new Set(["a.ts"]))).toBe(false);
+  });
+});
+
+describe("isReviewThreadInFileDiff", () => {
+  it.each([true, null])("does not pin an outdated or unverified anchor (%s)", (isOutdated) => {
+    const file = fileWithHunks([
+      { deletionStart: 1, deletionCount: 3, additionStart: 1, additionCount: 3 },
+    ]);
+    expect(
+      isReviewThreadInFileDiff(file, { path: "src/app.ts", side: "right", line: 2, isOutdated }),
+    ).toBe(false);
+  });
+  it("pins a verified current anchor in the matching file", () => {
+    const file = fileWithHunks([
+      { deletionStart: 1, deletionCount: 3, additionStart: 1, additionCount: 3 },
+    ]);
+    expect(
+      isReviewThreadInFileDiff(file, {
+        path: "src/app.ts",
+        side: "right",
+        line: 2,
+        isOutdated: false,
+      }),
+    ).toBe(true);
   });
 });

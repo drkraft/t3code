@@ -1,5 +1,7 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
-import type { PullRequestDiffSide } from "@t3tools/contracts";
+import type { PullRequestDiffSide, PullRequestReviewThread } from "@t3tools/contracts";
+
+import { resolveFileDiffPath } from "~/lib/diffRendering";
 
 /**
  * Whether a conversation's line is really in this file's hunks.
@@ -40,4 +42,17 @@ export function isFileDiffCollapsed(
 ): boolean {
   const foldedByDefault = foldOverride === "folded";
   return toggledFileKeys.has(fileKey) ? !foldedByDefault : foldedByDefault;
+}
+
+/** Only a verified current anchor may attach a conversation to code. */
+export function isReviewThreadInFileDiff(
+  file: FileDiffMetadata,
+  thread: Pick<PullRequestReviewThread, "path" | "line" | "side" | "isOutdated">,
+): boolean {
+  return (
+    thread.isOutdated === false &&
+    thread.path === resolveFileDiffPath(file) &&
+    thread.line !== null &&
+    isLineInFileDiff(file, thread.side, thread.line)
+  );
 }

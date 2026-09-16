@@ -123,7 +123,7 @@ interface PendingDefaultBranchAction {
 
 type PublishProviderKind = Extract<
   SourceControlProviderKind,
-  "github" | "gitlab" | "bitbucket" | "azure-devops"
+  "github" | "gitlab" | "bitbucket" | "azure-devops" | "forgejo"
 >;
 
 type GitActionToastId = ReturnType<typeof toastManager.add>;
@@ -203,11 +203,19 @@ const PUBLISH_PROVIDER_OPTIONS = [
     pathPlaceholder: "project/repository",
     Icon: AzureDevOpsIcon,
   },
+  {
+    value: "forgejo",
+    label: "Forgejo",
+    description: "Configured instance",
+    host: null,
+    pathPlaceholder: "owner/repo or full repository URL",
+    Icon: GlobeIcon,
+  },
 ] as const satisfies ReadonlyArray<{
   readonly value: PublishProviderKind;
   readonly label: string;
   readonly description: string;
-  readonly host: string;
+  readonly host: string | null;
   readonly pathPlaceholder: string;
   readonly Icon: typeof GitHubIcon;
 }>;
@@ -427,6 +435,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
       gitlab: null,
       bitbucket: null,
       "azure-devops": null,
+      forgejo: null,
     };
     for (const provider of sourceControlDiscovery.data?.sourceControlProviders ?? []) {
       if (isPublishProviderKind(provider.kind)) {
@@ -668,7 +677,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
               <div className="flex items-stretch overflow-hidden rounded-md border border-input bg-background focus-within:outline-2 focus-within:-outline-offset-1 focus-within:outline-ring">
                 <span className="flex shrink-0 items-center gap-1.5 border-r border-input bg-muted/50 px-2.5 font-mono text-xs text-muted-foreground">
                   <currentPublishProvider.Icon className="size-3.5" />
-                  {publishHost}/
+                  {publishHost === null ? publishProviderLabel : `${publishHost}/`}
                 </span>
                 <input
                   id="publish-repository-path"

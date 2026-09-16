@@ -10,6 +10,7 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Crypto from "effect/Crypto";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -130,6 +131,7 @@ function makeLink(
 }
 
 interface HarnessOptions {
+  readonly connections?: string;
   readonly thread?: OrchestrationThreadShell | null;
   readonly project?: OrchestrationProjectShell | null;
   readonly reject?: (command: OrchestrationCommand) => OrchestrationCommandInvariantError | null;
@@ -161,6 +163,10 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
       latestSequence: Effect.succeed(0),
     }),
     Layer.succeed(Crypto.Crypto, testCrypto),
+    Layer.succeed(
+      ConfigProvider.ConfigProvider,
+      ConfigProvider.fromUnknown({ T3CODE_FORGEJO_CONNECTIONS: options.connections ?? "[]" }),
+    ),
   );
   const toolkit = yield* PullRequestsToolkit.pipe(
     Effect.provide(PullRequestsToolkitHandlersLive.pipe(Layer.provide(dependencies))),
@@ -415,4 +421,168 @@ it("keeps failure diagnostics as the cause rather than exposing them in the tool
   const failure = new PullRequestLinkFailedError({ cause });
   expect(failure.message).toBe("Could not link the pull request.");
   expect(failure.cause).toBe(cause);
+});
+
+describe("Forgejo MCP link targets", () => {
+  const project = makeProject({
+    canonicalKey: "localhost:59349/team/repo",
+    provider: "forgejo",
+    displayName: "team/repo",
+    owner: "team",
+    name: "repo",
+    locator: {
+      source: "git-remote",
+      remoteName: "origin",
+      remoteUrl: "http://localhost:59349/team/repo.git",
+    },
+  });
+  it.effect("links another repository from an explicit Forgejo URL", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ project });
+      const result = yield* harness.call("link_pull_request", {
+        url: "http://localhost:59349/Team/Other/pulls/17/files",
+      });
+      expect(result).toMatchObject({
+        host: "localhost:59349",
+        repository: "team/other",
+        number: 17,
+      });
+      expect(yield* Ref.get(harness.commands)).toMatchObject([
+        {
+          type: "thread.pull-request.link",
+          host: "localhost:59349",
+          repository: "team/other",
+          number: 17,
+        },
+      ]);
+    }),
+  );
+  it.effect("builds another repository's URL using the project's Forgejo host and protocol", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ project });
+      const result = yield* harness.call("link_pull_request", {
+        repository: "Team/Other",
+        number: 17,
+      });
+      expect(result).toMatchObject({
+        host: "localhost:59349",
+        repository: "team/other",
+        number: 17,
+        url: "http://localhost:59349/team/other/pulls/17",
+      });
+    }),
+  );
+  it.effect("unlinks a Forgejo URL by its full host identity", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ project });
+      yield* harness.call("unlink_pull_request", {
+        url: "http://localhost:59349/team/other/pulls/17",
+      });
+      expect(yield* Ref.get(harness.commands)).toMatchObject([
+        {
+          type: "thread.pull-request.unlink",
+          host: "localhost:59349",
+          repository: "team/other",
+          number: 17,
+        },
+      ]);
+    }),
+  );
+  it.effect("preserves the existing unknown-host fallback without borrowing Forgejo's route", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ project });
+      const result = yield* harness.call("link_pull_request", {
+        host: "other.test",
+        repository: "team/repo",
+        number: 17,
+      });
+      expect(result.url).toBe("https://other.test/team/repo/pull/17");
+    }),
+  );
+});
+
+describe("configured Forgejo MCP origins", () => {
+  const connections = JSON.stringify([
+    {
+      id: "local",
+      apiUrl: "http://localhost:59349/api/v1",
+      gitHosts: ["forge-ssh"],
+      tokenEnv: "UNSET_FORGEJO_TEST_TOKEN",
+    },
+  ]);
+  it.effect("uses configured Forgejo origin for an explicit host from a GitHub project", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ connections });
+      const result = yield* harness.call("link_pull_request", {
+        host: "localhost:59349",
+        repository: "team/other",
+        number: 17,
+      });
+      expect(result).toMatchObject({
+        host: "localhost:59349",
+        url: "http://localhost:59349/team/other/pulls/17",
+      });
+    }),
+  );
+  it.effect("resolves an SSH alias to the configured HTTP Forgejo origin", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        connections,
+        project: makeProject({
+          canonicalKey: "forge-ssh/team/repo",
+          provider: "forgejo",
+          displayName: "team/repo",
+          owner: "team",
+          name: "repo",
+          locator: {
+            source: "git-remote",
+            remoteName: "origin",
+            remoteUrl: "git@forge-ssh:team/repo.git",
+          },
+        }),
+      });
+      const result = yield* harness.call("link_pull_request", {
+        repository: "team/other",
+        number: 17,
+      });
+      expect(result).toMatchObject({
+        host: "localhost:59349",
+        url: "http://localhost:59349/team/other/pulls/17",
+      });
+    }),
+  );
+});
+
+describe("invalid Forgejo configuration isolation", () => {
+  it.effect("keeps GitHub URL linking available", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ connections: "{invalid" });
+      const result = yield* harness.call("link_pull_request", {
+        url: "https://github.com/team/repo/pull/17",
+      });
+      expect(result).toMatchObject({ host: "github.com", repository: "team/repo", number: 17 });
+    }),
+  );
+  it.effect("keeps GitHub repository and number linking available", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ connections: "{invalid" });
+      const result = yield* harness.call("link_pull_request", {
+        repository: "team/repo",
+        number: 17,
+      });
+      expect(result.url).toBe("https://github.com/team/repo/pull/17");
+    }),
+  );
+  it.effect("keeps stored thread links available", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        connections: "{invalid",
+        thread: makeThread([makeLink(17)]),
+      });
+      const result = yield* harness.call("list_thread_pull_requests", {});
+      expect(result.pullRequests).toMatchObject([
+        { host: "github.com", repository: "t3tools/t3code", number: 17 },
+      ]);
+    }),
+  );
 });

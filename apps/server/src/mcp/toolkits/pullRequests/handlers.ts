@@ -18,6 +18,8 @@ import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
+import * as ForgejoConnections from "../../../sourceControl/ForgejoConnections.ts";
+
 import * as OrchestrationEngine from "../../../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -65,6 +67,7 @@ function projectHostAndProvider(project: OrchestrationProjectShell | undefined):
 const resolveTarget = Effect.fn("PullRequestsToolkit.resolveTarget")(function* (
   input: PullRequestTargetInput,
   project: OrchestrationProjectShell | undefined,
+  connections: ForgejoConnections.ForgejoConnections["Service"],
 ) {
   if (input.url !== undefined) {
     const parsed = parseChangeRequestUrl(input.url);
@@ -82,7 +85,17 @@ const resolveTarget = Effect.fn("PullRequestsToolkit.resolveTarget")(function* (
     return yield* new PullRequestHostRequiredError({});
   }
   const repository = input.repository.toLowerCase();
-  const url =
+  const connection = connections.resolve(host);
+  if (connection) {
+    const baseUrl = connection.apiUrl.replace(/\/api\/v1$/u, "");
+    return {
+      host: new URL(baseUrl).host.toLowerCase(),
+      repository,
+      number: input.number,
+      url: `${baseUrl}/${repository}/pulls/${input.number}`,
+    } satisfies ResolvedTarget;
+  }
+  const defaultUrl =
     changeRequestUrlFor(
       // The project's kind only describes its own host; another host gets no URL guess.
       host === projectHost.host ? projectHost.kind : null,
@@ -90,6 +103,22 @@ const resolveTarget = Effect.fn("PullRequestsToolkit.resolveTarget")(function* (
       repository,
       input.number,
     ) ?? `https://${host}/${repository}/pull/${input.number}`;
+  let url = defaultUrl;
+  const remoteUrl = project?.repositoryIdentity?.locator.remoteUrl;
+  if (
+    projectHost.kind === "forgejo" &&
+    host === projectHost.host &&
+    remoteUrl &&
+    URL.canParse(remoteUrl)
+  ) {
+    const remote = new URL(remoteUrl);
+    if (
+      remote.host.toLowerCase() === host &&
+      (remote.protocol === "http:" || remote.protocol === "https:")
+    ) {
+      url = `${remote.origin}/${repository}/pulls/${input.number}`;
+    }
+  }
   return { host, repository, number: input.number, url } satisfies ResolvedTarget;
 });
 
@@ -142,6 +171,12 @@ const make = Effect.gen(function* () {
   const engine = yield* OrchestrationEngine.OrchestrationEngineService;
   const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const crypto = yield* Crypto.Crypto;
+  // Provider discovery reports invalid configuration; unrelated thread-link tools remain usable.
+  const connections = yield* ForgejoConnections.make.pipe(
+    Effect.catchTag("ForgejoConnectionsConfigError", () =>
+      Effect.succeed({ connections: [], resolve: () => null }),
+    ),
+  );
 
   const commandId = (tag: string, threadId: ThreadId) =>
     crypto.randomUUIDv4.pipe(
@@ -188,7 +223,7 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const thread = yield* requireThread(PullRequestLinkFailedError);
         const project = yield* projectOf(thread, PullRequestLinkFailedError);
-        const target = yield* resolveTarget(input, project);
+        const target = yield* resolveTarget(input, project, connections);
         const alreadyLinked = yield* engine
           .dispatch({
             type: "thread.pull-request.link",
@@ -213,7 +248,7 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const thread = yield* requireThread(PullRequestUnlinkFailedError);
         const project = yield* projectOf(thread, PullRequestUnlinkFailedError);
-        const target = yield* resolveTarget(input, project);
+        const target = yield* resolveTarget(input, project, connections);
         const wasLinked = yield* engine
           .dispatch({
             type: "thread.pull-request.unlink",

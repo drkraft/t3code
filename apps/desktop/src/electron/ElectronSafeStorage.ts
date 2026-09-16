@@ -98,3 +98,29 @@ export const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(ElectronSafeStorage, make);
+
+// Forgejo can prompt for Keychain access from Settings; keep the main thread responsive.
+export const layerAsync = Layer.effect(
+  ElectronSafeStorage,
+  make.pipe(
+    Effect.map((storage) =>
+      ElectronSafeStorage.of({
+        ...storage,
+        isEncryptionAvailable: Effect.tryPromise({
+          try: () => Electron.safeStorage.isAsyncEncryptionAvailable(),
+          catch: (cause) => new ElectronSafeStorageAvailabilityError({ cause }),
+        }),
+        encryptString: (value) =>
+          Effect.tryPromise({
+            try: () => Electron.safeStorage.encryptStringAsync(value),
+            catch: (cause) => new ElectronSafeStorageEncryptError({ cause }),
+          }),
+        decryptString: (value) =>
+          Effect.tryPromise({
+            try: () => Electron.safeStorage.decryptStringAsync(Buffer.from(value)),
+            catch: (cause) => new ElectronSafeStorageDecryptError({ cause }),
+          }).pipe(Effect.map((decrypted) => decrypted.result)),
+      }),
+    ),
+  ),
+);

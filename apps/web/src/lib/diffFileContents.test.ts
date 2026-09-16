@@ -1,10 +1,13 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
-import { EnvironmentId, type ReviewDiffFileContentsResult } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, type ReviewDiffFileContentsResult } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { createGitDiffFileContentsLoader } from "./diffFileContents";
+import {
+  createGitDiffFileContentsLoader,
+  createPullRequestDiffFileContentsLoader,
+} from "./diffFileContents";
 
 const SOURCE = {
   environmentId: EnvironmentId.make("environment-1"),
@@ -76,5 +79,62 @@ describe("createGitDiffFileContentsLoader", () => {
     const load = createGitDiffFileContentsLoader(getDiffFileContents, SOURCE);
 
     await expect(load(fileDiff())).rejects.toBe(failure);
+  });
+});
+
+describe("createPullRequestDiffFileContentsLoader", () => {
+  it("retains the displayed revisions for expansion and separates their hydrated caches", async () => {
+    const read = vi.fn(async () =>
+      AsyncResult.success({ oldContents: "before", newContents: "after" }),
+    );
+    const source = {
+      environmentId: EnvironmentId.make("environment-1"),
+      reference: {
+        projectId: ProjectId.make("project-1"),
+        host: "forgejo.example",
+        repository: "owner/repo",
+        number: 1,
+      },
+      commit: null,
+      cacheKey: "same-patch",
+    };
+    const original = { baseSha: "base-1", headSha: "head-1" };
+    const refreshed = { baseSha: "base-2", headSha: "head-2" };
+    const first = await createPullRequestDiffFileContentsLoader(read, {
+      ...source,
+      snapshot: original,
+    })(fileDiff());
+    const second = await createPullRequestDiffFileContentsLoader(read, {
+      ...source,
+      snapshot: refreshed,
+    })(fileDiff());
+    expect(read.mock.calls).toEqual([
+      [
+        {
+          environmentId: source.environmentId,
+          input: {
+            ...source.reference,
+            snapshot: original,
+            changeType: "rename-changed",
+            oldPath: "src/old-name.ts",
+            newPath: "src/new-name.ts",
+          },
+        },
+      ],
+      [
+        {
+          environmentId: source.environmentId,
+          input: {
+            ...source.reference,
+            snapshot: refreshed,
+            changeType: "rename-changed",
+            oldPath: "src/old-name.ts",
+            newPath: "src/new-name.ts",
+          },
+        },
+      ],
+    ]);
+    expect(first.newFile?.cacheKey).not.toEqual(second.newFile?.cacheKey);
+    expect(first.oldFile?.cacheKey).not.toEqual(second.oldFile?.cacheKey);
   });
 });

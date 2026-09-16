@@ -1,3 +1,5 @@
+import type { ForgejoBootstrapConnection } from "@t3tools/contracts";
+import * as DesktopForgejoConnections from "../settings/DesktopForgejoConnections.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -33,6 +35,18 @@ const encodePersistedServerObservabilitySettingsDocument = Schema.encodeEffect(
 const isDesktopBackendObservabilitySettingsReadError = Schema.is(
   DesktopBackendConfiguration.DesktopBackendObservabilitySettingsReadError,
 );
+
+const forgejoLayer = (
+  loadForBootstrap: Effect.Effect<
+    readonly ForgejoBootstrapConnection[] | undefined
+  > = Effect.succeed(undefined),
+) =>
+  Layer.succeed(DesktopForgejoConnections.DesktopForgejoConnections, {
+    get: Effect.die("unexpected get"),
+    upsert: () => Effect.die("unexpected upsert"),
+    remove: () => Effect.die("unexpected remove"),
+    loadForBootstrap,
+  });
 
 const serverExposureLayer = Layer.succeed(DesktopServerExposure.DesktopServerExposure, {
   getState: Effect.die("unexpected getState"),
@@ -105,6 +119,9 @@ const withHarness = <A, E, R>(
     | FileSystem.FileSystem
     | DesktopBackendConfiguration.DesktopBackendConfiguration
   >,
+  loadForgejo: Effect.Effect<readonly ForgejoBootstrapConnection[] | undefined> = Effect.succeed(
+    undefined,
+  ),
 ) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
@@ -115,6 +132,7 @@ const withHarness = <A, E, R>(
     return yield* effect.pipe(
       Effect.provide(
         DesktopBackendConfiguration.layer.pipe(
+          Layer.provideMerge(forgejoLayer(loadForgejo)),
           Layer.provideMerge(serverExposureLayer),
           Layer.provideMerge(DesktopAppSettings.layerTest()),
           Layer.provideMerge(DesktopWslEnvironment.layerTest()),
@@ -193,6 +211,7 @@ const withPackagedWslHarness = <A, E, R>(
     return yield* effect(context).pipe(
       Effect.provide(
         DesktopBackendConfiguration.layer.pipe(
+          Layer.provideMerge(forgejoLayer()),
           Layer.provideMerge(serverExposureLayer),
           Layer.provideMerge(DesktopAppSettings.layerTest()),
           Layer.provideMerge(serverTreeLayer),
@@ -218,6 +237,33 @@ const withPackagedWslHarness = <A, E, R>(
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
 
 describe("DesktopBackendConfiguration", () => {
+  it.effect("loads current Mac Forgejo secrets only into the private native bootstrap", () => {
+    let reads = 0;
+    return withHarness(
+      Effect.gen(function* () {
+        const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
+        const first = yield* configuration.resolvePrimary;
+        const second = yield* configuration.resolvePrimary;
+        assert.equal(first.bootstrap.forgejoConnections?.[0]?.token, "synthetic-1");
+        assert.equal(second.bootstrap.forgejoConnections?.[0]?.token, "synthetic-2");
+        assert.equal(second.bootstrapDelivery, "fd3");
+        assert.isFalse(Object.values(second.env).includes("synthetic-2"));
+        assert.isFalse(second.args.includes("synthetic-2"));
+        const wsl = yield* configuration.resolveWsl({ port: 4999, distro: null });
+        assert.isUndefined(wsl.bootstrap.forgejoConnections);
+        assert.equal(reads, 2);
+      }),
+      Effect.sync(() => [
+        {
+          id: "forge",
+          apiUrl: "https://forge.test/api/v1",
+          gitHosts: [],
+          token: `synthetic-${++reads}`,
+        },
+      ]),
+    );
+  });
+
   it.effect("resolvePrimary produces a stable scoped bootstrap token", () =>
     withHarness(
       Effect.gen(function* () {
@@ -264,6 +310,7 @@ describe("DesktopBackendConfiguration", () => {
       }).pipe(
         Effect.provide(
           DesktopBackendConfiguration.layer.pipe(
+            Layer.provideMerge(forgejoLayer()),
             Layer.provideMerge(serverExposureLayer),
             Layer.provideMerge(DesktopAppSettings.layerTest()),
             Layer.provideMerge(DesktopWslEnvironment.layerTest()),
@@ -326,6 +373,7 @@ describe("DesktopBackendConfiguration", () => {
       }).pipe(
         Effect.provide(
           DesktopBackendConfiguration.layer.pipe(
+            Layer.provideMerge(forgejoLayer()),
             Layer.provideMerge(serverExposureLayer),
             Layer.provideMerge(DesktopAppSettings.layerTest()),
             Layer.provideMerge(DesktopWslServerTree.layerTest()),
@@ -661,6 +709,7 @@ describe("DesktopBackendConfiguration", () => {
         }).pipe(
           Effect.provide(
             DesktopBackendConfiguration.layer.pipe(
+              Layer.provideMerge(forgejoLayer()),
               Layer.provideMerge(serverExposureLayer),
               Layer.provideMerge(DesktopAppSettings.layerTest()),
               Layer.provideMerge(DesktopWslServerTree.layerTest()),
@@ -798,6 +847,7 @@ describe("DesktopBackendConfiguration", () => {
         Effect.provide(
           Layer.mergeAll(
             DesktopBackendConfiguration.layer.pipe(
+              Layer.provideMerge(forgejoLayer()),
               Layer.provideMerge(serverExposureLayer),
               Layer.provideMerge(DesktopAppSettings.layerTest()),
               Layer.provideMerge(DesktopWslServerTree.layerTest()),
@@ -840,6 +890,7 @@ describe("DesktopBackendConfiguration", () => {
       }).pipe(
         Effect.provide(
           DesktopBackendConfiguration.layer.pipe(
+            Layer.provideMerge(forgejoLayer()),
             Layer.provideMerge(serverExposureLayer),
             Layer.provideMerge(DesktopAppSettings.layerTest()),
             Layer.provideMerge(DesktopWslServerTree.layerTest()),
@@ -900,6 +951,7 @@ describe("DesktopBackendConfiguration", () => {
         }).pipe(
           Effect.provide(
             DesktopBackendConfiguration.layer.pipe(
+              Layer.provideMerge(forgejoLayer()),
               Layer.provideMerge(serverExposureLayer),
               Layer.provideMerge(DesktopAppSettings.layerTest()),
               Layer.provideMerge(DesktopWslServerTree.layerTest()),
@@ -945,6 +997,7 @@ describe("DesktopBackendConfiguration", () => {
         }).pipe(
           Effect.provide(
             DesktopBackendConfiguration.layer.pipe(
+              Layer.provideMerge(forgejoLayer()),
               Layer.provideMerge(serverExposureLayer),
               Layer.provideMerge(
                 DesktopAppSettings.layerTest({
@@ -982,6 +1035,7 @@ describe("DesktopBackendConfiguration", () => {
         }).pipe(
           Effect.provide(
             DesktopBackendConfiguration.layer.pipe(
+              Layer.provideMerge(forgejoLayer()),
               Layer.provideMerge(serverExposureLayer),
               Layer.provideMerge(
                 DesktopAppSettings.layerTest({
@@ -1023,6 +1077,7 @@ describe("DesktopBackendConfiguration", () => {
       }).pipe(
         Effect.provide(
           DesktopBackendConfiguration.layer.pipe(
+            Layer.provideMerge(forgejoLayer()),
             Layer.provideMerge(serverExposureLayer),
             Layer.provideMerge(DesktopAppSettings.layerTest()),
             Layer.provideMerge(DesktopWslServerTree.layerTest()),
@@ -1058,6 +1113,7 @@ describe("DesktopBackendConfiguration", () => {
       }).pipe(
         Effect.provide(
           DesktopBackendConfiguration.layer.pipe(
+            Layer.provideMerge(forgejoLayer()),
             Layer.provideMerge(serverExposureLayer),
             Layer.provideMerge(DesktopAppSettings.layerTest()),
             Layer.provideMerge(DesktopWslServerTree.layerTest()),
@@ -1092,6 +1148,7 @@ describe("DesktopBackendConfiguration", () => {
       }).pipe(
         Effect.provide(
           DesktopBackendConfiguration.layer.pipe(
+            Layer.provideMerge(forgejoLayer()),
             Layer.provideMerge(serverExposureLayer),
             Layer.provideMerge(DesktopAppSettings.layerTest()),
             Layer.provideMerge(
@@ -1133,6 +1190,7 @@ describe("DesktopBackendConfiguration", () => {
       }).pipe(
         Effect.provide(
           DesktopBackendConfiguration.layer.pipe(
+            Layer.provideMerge(forgejoLayer()),
             Layer.provideMerge(serverExposureLayer),
             Layer.provideMerge(DesktopAppSettings.layerTest()),
             Layer.provideMerge(DesktopWslServerTree.layerTest()),
@@ -1163,6 +1221,7 @@ describe("DesktopBackendConfiguration", () => {
       }).pipe(
         Effect.provide(
           DesktopBackendConfiguration.layer.pipe(
+            Layer.provideMerge(forgejoLayer()),
             Layer.provideMerge(serverExposureLayer),
             Layer.provideMerge(
               DesktopAppSettings.layerTest({
@@ -1212,6 +1271,7 @@ describe("DesktopBackendConfiguration", () => {
       }).pipe(
         Effect.provide(
           DesktopBackendConfiguration.layer.pipe(
+            Layer.provideMerge(forgejoLayer()),
             Layer.provideMerge(serverExposureLayer),
             Layer.provideMerge(DesktopAppSettings.layerTest()),
             Layer.provideMerge(DesktopWslServerTree.layerTest()),
@@ -1258,6 +1318,7 @@ describe("DesktopBackendConfiguration", () => {
       }).pipe(
         Effect.provide(
           DesktopBackendConfiguration.layer.pipe(
+            Layer.provideMerge(forgejoLayer()),
             Layer.provideMerge(serverExposureLayer),
             Layer.provideMerge(DesktopAppSettings.layerTest()),
             Layer.provideMerge(DesktopWslServerTree.layerTest()),
@@ -1302,6 +1363,7 @@ describe("DesktopBackendConfiguration", () => {
       }).pipe(
         Effect.provide(
           DesktopBackendConfiguration.layer.pipe(
+            Layer.provideMerge(forgejoLayer()),
             Layer.provideMerge(serverExposureLayer),
             Layer.provideMerge(
               DesktopAppSettings.layerTest({
@@ -1331,6 +1393,7 @@ describe("DesktopBackendConfiguration", () => {
     // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- This test intentionally replicates the sync IPC handler's runSync path to catch a regression to async-only resolution; it.effect would mask it.
     const runtime = ManagedRuntime.make(
       DesktopBackendConfiguration.layer.pipe(
+        Layer.provideMerge(forgejoLayer()),
         Layer.provideMerge(serverExposureLayer),
         Layer.provideMerge(DesktopAppSettings.layerTest()),
         Layer.provideMerge(DesktopWslServerTree.layerTest()),
